@@ -1,0 +1,41 @@
+source_language: auto
+target_languages:
+  - english
+
+provider:
+  name: openai
+  base_url: https://api.openai.com/v1
+  api_key: YOUR_API_KEY
+  model: YourModelName
+  temperature: 0.3
+  max_tokens: 4000
+
+pipeline:
+  mode: balanced
+  enable_review: false
+  enable_format_guard: false
+  enable_translation_memory: false
+  fail_on_validation_error: true
+  review_min_bundle_chars: 1600
+  review_min_segments: 6
+  review_confidence_threshold: 0.85
+
+segmentation:
+  max_bundle_chars: 6000
+  min_bundle_segments: 3
+  max_bundle_segments: 12
+
+style:
+  tone: technical
+  preserve_terms:
+    - OpenAI
+    - Markdown
+    - Python
+  audience: developers
+  instructions:
+    - Keep protected placeholders unchanged.
+    - Do not alter Markdown control syntax.
+
+output:
+  file_suffix_template: "{stem}.{lang}.md"
+  write_report: true
