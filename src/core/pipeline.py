@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import Executor, Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -253,17 +254,71 @@ class TranslationPipeline:
         mode: str,
     ) -> list[TranslationResult]:
         logging.info("Translating %s (%s segments)", bundle.bundle_id, len(bundle.segments))
-        translations = self.translator_agent.translate_bundle(
-            bundle=bundle,
-            context=context,
-            target_lang=target_lang,
-        )
+
+        translations: list[TranslationResult] | None = None
+        last_exc: Exception | None = None
+        max_attempts = 5  # Retry budget for LLM output format issues.
+        for attempt in range(1, max_attempts + 1):
+            try:
+                translations = self.translator_agent.translate_bundle(
+                    bundle=bundle,
+                    context=context,
+                    target_lang=target_lang,
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                if not self._looks_like_llm_output_format_error(exc):
+                    raise
+                if attempt >= max_attempts:
+                    raise
+                logging.warning(
+                    "LLM output format invalid for bundle=%s attempt=%s/%s; retrying. error=%s",
+                    bundle.bundle_id,
+                    attempt,
+                    max_attempts,
+                    exc,
+                )
+
+        if translations is None and last_exc is not None:
+            raise last_exc
+        assert translations is not None
+
         if self._should_run_review(bundle, translations):
             logging.info("Reviewing %s (%s)", bundle.bundle_id, mode)
             translations = self.reviewer_agent.review_bundle(bundle, translations, context)
         for item in translations:
             item.translated_text = self.protected_span_processor.restore(item.translated_text, segment_lookup[item.segment_id])
         return translations
+
+    @staticmethod
+    def _looks_like_llm_output_format_error(exc: Exception) -> bool:
+        """
+        Retry only when the failure is plausibly caused by the model returning
+        malformed/incomplete JSON (or otherwise missing required translation fields).
+        """
+        if isinstance(exc, TranslationPipelineError):
+            msg = str(exc)
+            return (
+                "missing translations for segments" in msg
+                or "Model returned no translations" in msg
+            )
+
+        # Provider-side JSON parsing failures (LLM didn't return valid JSON).
+        if isinstance(exc, json.JSONDecodeError):
+            return True
+
+        # Output schema violations (e.g., missing required keys in returned items).
+        if isinstance(exc, KeyError):
+            missing_key = str(exc)
+            return "segment_id" in missing_key or "translated_text" in missing_key
+
+        # Output type violations (e.g., confidence is not numeric).
+        if isinstance(exc, ValueError):
+            # Typical message: "could not convert string to float: '...'"
+            return "could not convert string to float" in str(exc)
+
+        return False
 
     @staticmethod
     def _translations_by_bundle(bundles, translations: list[TranslationResult]) -> dict[str, list[TranslationResult]]:

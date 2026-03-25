@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import yaml
 
@@ -12,6 +13,44 @@ from src.infra.config import default_user_config_path
 class CliErrorPresentation:
     message: str
     exit_code: int = 1
+
+
+def _extract_model_service_error_message(exc: Exception) -> str | None:
+    body = getattr(exc, "body", None)
+    if isinstance(body, str):
+        message = body.strip()
+        return message or None
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+        message = body.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+
+    response = getattr(exc, "response", None)
+    if response is not None:
+        data: Any = None
+        try:
+            json_method = getattr(response, "json", None)
+            if callable(json_method):
+                data = json_method()
+        except Exception:
+            data = None
+        if isinstance(data, dict):
+            error = data.get("error")
+            if isinstance(error, dict):
+                message = error.get("message")
+                if isinstance(message, str) and message.strip():
+                    return message.strip()
+            message = data.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()
+
+    message = str(exc).strip()
+    return message or None
 
 
 def present_cli_error(exc: Exception, *, verbose: bool) -> CliErrorPresentation:
@@ -133,6 +172,11 @@ def present_cli_error(exc: Exception, *, verbose: bool) -> CliErrorPresentation:
 
     if APIStatusError is not None and isinstance(exc, APIStatusError):
         status_code = getattr(exc, "status_code", "unknown")
+        provider_message = _extract_model_service_error_message(exc)
+        if provider_message:
+            logging.error("Model service error details (HTTP %s): %s", status_code, provider_message)
+        else:
+            logging.error("Model service error details unavailable (HTTP %s).", status_code)
         return CliErrorPresentation(
             "\n".join(
                 [
