@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from src.infra.config import default_user_config_path, initialize_config, load_config, resolve_config_path
+
+
+class ConfigPathTests(unittest.TestCase):
+    def test_resolve_config_prefers_user_home_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            home_dir = Path(tmp_dir)
+            config_dir = home_dir / ".mdtx"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            expected = config_dir / "config.yaml"
+            expected.write_text("target_languages:\n  - zh-CN\n", encoding="utf-8")
+
+            with patch("src.infra.config.Path.home", return_value=home_dir), patch(
+                "src.infra.config._workspace_root", return_value=home_dir / "workspace"
+            ):
+                self.assertEqual(resolve_config_path(), expected)
+
+    def test_initialize_config_creates_default_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            home_dir = Path(tmp_dir)
+            with patch("src.infra.config.Path.home", return_value=home_dir):
+                created = initialize_config()
+                self.assertEqual(created, default_user_config_path())
+                self.assertTrue(created.exists())
+                self.assertIn("target_languages:", created.read_text(encoding="utf-8"))
+
+    def test_initialize_config_preserves_existing_file_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            destination = Path(tmp_dir) / "config.yaml"
+            destination.write_text("provider:\n  model: custom-model\n", encoding="utf-8")
+
+            created = initialize_config(str(destination), force=False)
+
+            self.assertEqual(created, destination)
+            self.assertEqual(destination.read_text(encoding="utf-8"), "provider:\n  model: custom-model\n")
+
+    def test_load_config_creates_user_config_when_nothing_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            home_dir = Path(tmp_dir)
+            with patch("src.infra.config.Path.home", return_value=home_dir), patch(
+                "src.infra.config._workspace_root", return_value=home_dir / "workspace"
+            ):
+                load_config()
+                created = home_dir / ".mdtx" / "config.yaml"
+                self.assertTrue(created.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

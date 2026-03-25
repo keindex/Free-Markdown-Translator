@@ -152,8 +152,11 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-test*
 src/build
+src/buildtool/out/*
+!src/buildtool/out/.gitkeep
+src/buildtool/work/
+src/buildtool/spec/
 
 blogHelper.py
 # PyCharm
