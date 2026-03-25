@@ -24,7 +24,7 @@ def build_translator_prompts(bundle: SegmentBundle, context: DocumentContext, ta
         'Input JSON fields: task=job type, ctx=shared document hints, segments=list of units to translate, '
         "segment_id=stable output key, context=local section path, text=source text. "
         'Return JSON only: {"translations":[{"segment_id":"...","translated_text":"..."}]}. '
-        "Translate only text, preserve placeholders, URLs, code, and markdown control syntax exactly."
+        "Translate only text, **preserve placeholders**, URLs, code, and markdown control syntax exactly."
     )
     payload = {
         "task": "translate",

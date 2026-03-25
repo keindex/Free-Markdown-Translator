@@ -77,6 +77,26 @@ def _workspace_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def resolve_config_path(config_path: str | None = None) -> Path | None:
+    root = _workspace_root()
+    candidates = []
+    if config_path:
+        candidates.append(Path(config_path))
+    candidates.extend(
+        [
+            root / "config.yaml",
+            root / "src" / "config.yaml",
+            root / "translator.yaml",
+            root / "src" / "translator.yaml",
+        ]
+    )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     result = dict(base)
     for key, value in override.items():
@@ -145,26 +165,10 @@ def _filter_known_keys(section: dict[str, Any], config_type, section_name: str) 
 
 
 def load_config(config_path: str | None = None) -> TranslatorConfig:
-    root = _workspace_root()
-    candidates = []
-    if config_path:
-        candidates.append(Path(config_path))
-    candidates.extend(
-        [
-            root / "config.yaml",
-            root / "src" / "config.yaml",
-            root / "translator.yaml",
-            root / "src" / "translator.yaml",
-        ]
-    )
-
+    loaded_path = resolve_config_path(config_path)
     loaded: dict[str, Any] | None = None
-    loaded_path: Path | None = None
-    for candidate in candidates:
-        if candidate.exists():
-            loaded = _load_yaml_file(candidate)
-            loaded_path = candidate
-            break
+    if loaded_path is not None:
+        loaded = _load_yaml_file(loaded_path)
 
     data = _default_config_dict()
     if loaded_path is not None and loaded is not None:

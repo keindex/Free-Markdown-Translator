@@ -58,10 +58,7 @@ output:
   # 可用变量：{stem} 原文件名，{lang} 目标语言缩写。
   file_suffix_template: "{stem}.{lang}.md"
   # 是否同时写出 *.report.json 报告。
-  write_report: true
-
-# 术语表路径，可选。指向一个 YAML 文件。
-glossary_path:
+  write_report: false
 
 # 执行设置。
 execution:
