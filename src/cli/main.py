@@ -73,7 +73,7 @@ def _provider_auth_source(config: TranslatorConfig) -> str:
         return "config.api_key"
     if os.getenv(config.provider.api_key_env):
         return f"env:{config.provider.api_key_env}"
-    return f"missing ({config.provider.api_key_env})"
+    return f"not_set ({config.provider.api_key_env})"
 
 
 def _log_startup_config(args: argparse.Namespace, config: TranslatorConfig) -> None:

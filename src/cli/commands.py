@@ -280,7 +280,6 @@ def translate_command(
     resolved_output_dir = Path(output_dir or config.output.directory)
     sources = _collect_translation_sources(paths, resolved_match_pattern)
     tasks = _build_translation_tasks(sources, target_langs, resolved_output_dir, config)
-    build_pipeline(copy.deepcopy(config))
     task_workers = _resolve_parallel_workers(config, len(tasks))
     bundle_workers = _resolve_bundle_workers(config)
     total_bundles = sum(_count_task_bundles(task, config) for task in tasks)

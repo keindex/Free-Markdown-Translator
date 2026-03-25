@@ -23,12 +23,7 @@ class OpenAIProvider(LLMProvider):
         from openai import OpenAI
 
         resolved_api_key = self._resolve_api_key(api_key=api_key, api_key_env=api_key_env)
-        if not resolved_api_key:
-            raise ValueError(
-                "No API key available. Set provider.api_key in ~/.mdtx/config.yaml or "
-                "set provider.api_key_env to an environment variable name."
-            )
-        self.client = OpenAI(api_key=resolved_api_key, base_url=base_url)
+        self.client = OpenAI(api_key=resolved_api_key or "mdtx-no-auth", base_url=base_url)
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
