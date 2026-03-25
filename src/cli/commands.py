@@ -13,11 +13,11 @@ from src.agents.reviewer_agent import ReviewerAgent
 from src.agents.translator_agent import TranslatorAgent
 from src.core.pipeline import TranslationPipeline
 from src.core.orchestrator import Orchestrator
+from src.core.types import ApiUsageSummary
 from src.infra.config import TranslatorConfig
 from src.infra.logging import log_task_context
 from src.llm.client import OpenAIProvider
 from src.memory.document_context import DocumentContextBuilder
-from src.memory.glossary import Glossary
 from src.parser.markdown_parser import MarkdownParser
 from src.parser.segment_extractor import SegmentExtractor
 from src.validators.markdown_validator import MarkdownValidator
@@ -191,16 +191,58 @@ def _count_task_bundles(task: TranslationTask, config: TranslatorConfig) -> int:
     parser = MarkdownParser()
     extractor = SegmentExtractor()
     context_builder = DocumentContextBuilder()
-    glossary = Glossary()
     orchestrator = Orchestrator()
 
     source_text = task.source.input_path.read_text(encoding="utf-8")
     parsed = parser.parse(source_text, task.source.input_path, task.target_lang)
     segments = extractor.extract(parsed)
-    glossary_terms = glossary.load(config.glossary_path)
-    context = context_builder.build(parsed, segments, config, glossary_terms)
+    context = context_builder.build(parsed, segments, config)
     bundles = orchestrator.build_bundles(segments, context, config)
     return len(bundles)
+
+
+def _log_task_token_usage(task: TranslationTask, usage: ApiUsageSummary) -> None:
+    logging.info(
+        "Token usage: source=%s target=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s api_calls=%s",
+        task.source.input_path,
+        task.target_lang,
+        usage.total.prompt_tokens,
+        usage.total.completion_tokens,
+        usage.total.total_tokens,
+        usage.total.call_count,
+    )
+    if usage.by_call_label:
+        parts = []
+        for call_label in sorted(usage.by_call_label):
+            item = usage.by_call_label[call_label]
+            parts.append(
+                f"{call_label}(calls={item.call_count}, prompt={item.prompt_tokens}, completion={item.completion_tokens}, total={item.total_tokens})"
+            )
+        logging.info(
+            "Token usage by stage: source=%s target=%s %s",
+            task.source.input_path,
+            task.target_lang,
+            "; ".join(parts),
+        )
+
+
+def _log_total_token_usage(usage: ApiUsageSummary, task_count: int) -> None:
+    logging.info(
+        "Translate job token summary: tasks=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s api_calls=%s",
+        task_count,
+        usage.total.prompt_tokens,
+        usage.total.completion_tokens,
+        usage.total.total_tokens,
+        usage.total.call_count,
+    )
+    if usage.by_call_label:
+        parts = []
+        for call_label in sorted(usage.by_call_label):
+            item = usage.by_call_label[call_label]
+            parts.append(
+                f"{call_label}(calls={item.call_count}, prompt={item.prompt_tokens}, completion={item.completion_tokens}, total={item.total_tokens})"
+            )
+        logging.info("Translate job token summary by stage: %s", "; ".join(parts))
 
 
 def _run_translation_task_with_shared_bundle_executor(
@@ -250,6 +292,7 @@ def translate_command(
         task_workers,
         bundle_workers,
     )
+    total_usage = ApiUsageSummary()
 
     if task_workers == 1 and bundle_workers == 1:
         progress_tracker = BundleProgressTracker(total_bundles)
@@ -263,12 +306,15 @@ def translate_command(
                     output_path=task.output_path,
                     bundle_progress_callback=progress_tracker.update,
                 )
+                total_usage.merge(result.api_usage)
+                _log_task_token_usage(task, result.api_usage)
                 if config.output.write_report and result.output_path is not None:
                     report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
                     report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
                     logging.info("Wrote translation report: %s", report_path)
         finally:
             progress_tracker.close()
+        _log_total_token_usage(total_usage, len(tasks))
         return 0
 
     completed = 0
@@ -306,6 +352,8 @@ def translate_command(
                             raise
 
                         completed += 1
+                        total_usage.merge(result.api_usage)
+                        _log_task_token_usage(task, result.api_usage)
                         if config.output.write_report and result.output_path is not None:
                             report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
                             report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -319,11 +367,12 @@ def translate_command(
                             "[%s/%s] Completed translation: %s -> %s",
                             completed,
                             len(tasks),
-                            task.source.input_path,
-                            result.output_path,
-                        )
+                                task.source.input_path,
+                                result.output_path,
+                            )
     finally:
         progress_tracker.close()
+    _log_total_token_usage(total_usage, len(tasks))
     return 0
 
 

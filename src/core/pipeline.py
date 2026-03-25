@@ -13,7 +13,6 @@ from src.core.orchestrator import Orchestrator
 from src.core.types import PipelineResult, TranslationResult
 from src.infra.config import TranslatorConfig
 from src.memory.document_context import DocumentContextBuilder
-from src.memory.glossary import Glossary
 from src.parser.ast_mapper import AstMapper
 from src.parser.markdown_parser import MarkdownParser
 from src.parser.renderer import MarkdownRenderer
@@ -41,7 +40,6 @@ class TranslationPipeline:
         self.format_guard_agent = format_guard_agent
         self.validator = validator
         self.context_builder = DocumentContextBuilder()
-        self.glossary = Glossary()
         self.orchestrator = Orchestrator()
         self.protected_span_processor = ProtectedSpanProcessor()
         self.mapper = AstMapper()
@@ -65,8 +63,7 @@ class TranslationPipeline:
         parsed.segments = segments  # type: ignore[attr-defined]
         logging.info("Extracted %s translatable segments.", len(segments))
 
-        glossary = self.glossary.load(self.config.glossary_path)
-        context = self.context_builder.build(parsed, segments, self.config, glossary)
+        context = self.context_builder.build(parsed, segments, self.config)
         bundles = self.orchestrator.build_bundles(segments, context, self.config)
         logging.info("Built %s translation bundles.", len(bundles))
 
@@ -123,6 +120,7 @@ class TranslationPipeline:
             segments=segments,
             translations=all_translations,
             validation=validation,
+            api_usage=self.translator_agent.provider.get_usage_summary(),
         )
         result.report = self.report_builder.build(result)
         return result
@@ -131,8 +129,7 @@ class TranslationPipeline:
         source_text = input_path.read_text(encoding="utf-8")
         parsed = self.parser.parse(source_text, input_path, target_lang)
         segments = self.extractor.extract(parsed)
-        glossary = self.glossary.load(self.config.glossary_path)
-        context = self.context_builder.build(parsed, segments, self.config, glossary)
+        context = self.context_builder.build(parsed, segments, self.config)
         bundles = self.orchestrator.build_bundles(segments, context, self.config)
         return len(bundles)
 

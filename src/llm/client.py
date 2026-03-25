@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 
+from src.core.types import ApiUsageSummary
 from src.llm.provider import LLMProvider
 
 
@@ -30,6 +32,8 @@ class OpenAIProvider(LLMProvider):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self._usage_lock = threading.Lock()
+        self._usage_summary = ApiUsageSummary()
 
     def chat_json(self, system_prompt: str, user_prompt: str, call_label: str = "llm"):
         start = time.perf_counter()
@@ -55,17 +59,47 @@ class OpenAIProvider(LLMProvider):
             ],
         )
         content = response.choices[0].message.content or "{}"
+        usage = getattr(response, "usage", None)
+        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+        completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+        if total_tokens == 0:
+            total_tokens = prompt_tokens + completion_tokens
+        self._record_usage(
+            call_label=call_label,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         logging.info(
-            "Model call done: label=%s provider=openai model=%s elapsed_ms=%s response_chars=%s",
+            "Model call done: label=%s provider=openai model=%s elapsed_ms=%s response_chars=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s",
             call_label,
             self.model,
             elapsed_ms,
             len(content),
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
         )
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             logging.debug("Model output [raw] (%s):\n%s", call_label, content)
         return json.loads(content)
+
+    def get_usage_summary(self) -> ApiUsageSummary:
+        with self._usage_lock:
+            summary = ApiUsageSummary()
+            summary.merge(self._usage_summary)
+            return summary
+
+    def _record_usage(self, call_label: str, prompt_tokens: int, completion_tokens: int, total_tokens: int) -> None:
+        with self._usage_lock:
+            self._usage_summary.add(
+                call_label=call_label,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
 
     @staticmethod
     def _resolve_api_key(api_key: str | None, api_key_env: str) -> str:

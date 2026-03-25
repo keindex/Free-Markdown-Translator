@@ -13,8 +13,6 @@ def _compact_context(context: DocumentContext) -> dict:
     payload: dict[str, object] = {}
     if context.title:
         payload["title"] = context.title[:120]
-    if context.glossary:
-        payload["glossary"] = context.glossary
     if context.style_guide:
         payload["style"] = context.style_guide[:3]
     return payload

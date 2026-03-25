@@ -71,7 +71,6 @@ class TranslatorConfig:
     style: StyleConfig = field(default_factory=StyleConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
-    glossary_path: str | None = None
 
 
 def _workspace_root() -> Path:
@@ -130,7 +129,6 @@ def _default_config_dict() -> dict[str, Any]:
         "execution": {
             "max_parallel_translations": 1,
         },
-        "glossary_path": None,
     }
 
 def _load_yaml_file(path: Path) -> dict[str, Any]:
@@ -186,5 +184,4 @@ def load_config(config_path: str | None = None) -> TranslatorConfig:
         style=StyleConfig(**_filter_known_keys(data["style"], StyleConfig, "style")),
         output=OutputConfig(**_filter_known_keys(data["output"], OutputConfig, "output")),
         execution=ExecutionConfig(**_filter_known_keys(data["execution"], ExecutionConfig, "execution")),
-        glossary_path=data.get("glossary_path"),
     )

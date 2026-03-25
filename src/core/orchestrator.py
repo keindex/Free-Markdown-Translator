@@ -20,7 +20,6 @@ class Orchestrator:
                     segments=list(current),
                     summary_before=bundles[-1].summary_after if bundles else context.abstract[:200],
                     summary_after=self._build_bundle_summary(current),
-                    glossary_terms=context.glossary,
                     style_instructions=context.style_guide,
                 )
             )

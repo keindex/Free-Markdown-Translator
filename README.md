@@ -75,9 +75,6 @@ output:
   file_suffix_template: "{stem}.{lang}.md"
   write_report: true
 
-# 可选术语表路径。文件不存在时会自动忽略。
-glossary_path:
-
 # 并行执行设置。控制全局 bundle 级翻译并发。
 execution:
   max_parallel_translations: 4
@@ -95,7 +92,6 @@ execution:
 - `style` 用来约束语气、受众和术语保留
 - `output.directory` 是翻译结果的根目录，默认 `output`
 - `output.write_report` 控制是否生成 `*.report.json`
-- `glossary_path` 可指向 YAML 术语表文件
 - `execution.max_parallel_translations` 控制全局 bundle 级最大并行翻译数，默认 `1`
 - 例如 2 个文件各拆成 20 个 bundle，若该值为 `5`，则会在全部 40 个 bundle 中最多同时翻译 `5` 个
 - 默认推荐 `balanced`：只常驻 `TranslatorAgent`，`ReviewerAgent` 和 `FormatGuardAgent` 按需触发

@@ -5,7 +5,7 @@ from src.infra.config import TranslatorConfig
 
 
 class DocumentContextBuilder:
-    def build(self, doc: ParsedDocument, segments: list[Segment], config: TranslatorConfig, glossary: dict[str, str]) -> DocumentContext:
+    def build(self, doc: ParsedDocument, segments: list[Segment], config: TranslatorConfig) -> DocumentContext:
         title = str((doc.metadata.get("front_matter") or {}).get("title", ""))
         if not title:
             title = next((" / ".join(segment.context_path) for segment in segments if segment.context_path), "")
@@ -24,7 +24,6 @@ class DocumentContextBuilder:
             title=title,
             abstract=abstract,
             section_summaries=section_summaries,
-            glossary=glossary,
             style_guide=style_guide,
             audience=config.style.audience,
         )

@@ -6,6 +6,53 @@ from typing import Any
 
 
 @dataclass
+class ApiTokenUsage:
+    call_count: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+    def add(self, prompt_tokens: int, completion_tokens: int, total_tokens: int, call_count: int = 1) -> None:
+        self.call_count += call_count
+        self.prompt_tokens += prompt_tokens
+        self.completion_tokens += completion_tokens
+        self.total_tokens += total_tokens
+
+
+@dataclass
+class ApiUsageSummary:
+    total: ApiTokenUsage = field(default_factory=ApiTokenUsage)
+    by_call_label: dict[str, ApiTokenUsage] = field(default_factory=dict)
+
+    def add(self, call_label: str, prompt_tokens: int, completion_tokens: int, total_tokens: int) -> None:
+        self.total.add(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+        self.by_call_label.setdefault(call_label, ApiTokenUsage()).add(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+
+    def merge(self, other: "ApiUsageSummary") -> None:
+        self.total.add(
+            prompt_tokens=other.total.prompt_tokens,
+            completion_tokens=other.total.completion_tokens,
+            total_tokens=other.total.total_tokens,
+            call_count=other.total.call_count,
+        )
+        for call_label, usage in other.by_call_label.items():
+            self.by_call_label.setdefault(call_label, ApiTokenUsage()).add(
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                total_tokens=usage.total_tokens,
+                call_count=usage.call_count,
+            )
+
+
+@dataclass
 class ProtectedSpan:
     placeholder: str
     original_text: str
@@ -30,7 +77,6 @@ class SegmentBundle:
     segments: list[Segment]
     summary_before: str
     summary_after: str
-    glossary_terms: dict[str, str]
     style_instructions: list[str]
 
 
@@ -56,7 +102,6 @@ class DocumentContext:
     title: str
     abstract: str
     section_summaries: dict[str, str]
-    glossary: dict[str, str]
     style_guide: list[str]
     audience: str
 
@@ -81,4 +126,5 @@ class PipelineResult:
     segments: list[Segment]
     translations: list[TranslationResult]
     validation: ValidationReport
+    api_usage: ApiUsageSummary = field(default_factory=ApiUsageSummary)
     report: dict[str, Any] = field(default_factory=dict)

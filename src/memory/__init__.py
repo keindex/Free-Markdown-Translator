@@ -1,1 +1,1 @@
-"""Memory helpers for glossary and document context."""
+"""Memory helpers for document context and translation memory."""
