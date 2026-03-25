@@ -1,0 +1,62 @@
+# Free Markdown Translator 配置文件
+
+# 目标语言列表。支持一次翻译为多个语言。
+target_languages:
+  - english
+  - japanese
+
+# 大模型服务配置。当前实现为 OpenAI 兼容接口。
+provider:
+  name: openai
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  # 推荐通过环境变量提供密钥；如需直填，可写在 api_key。
+  api_key:
+  api_key_env: DASHSCOPE_API_KEY
+  model: qwen3.5-flash
+  # 温度越低，输出越稳定。
+  temperature: 0.2
+  # 单次响应的最大 token 数。
+  max_tokens: 4000
+
+# 翻译流程控制。
+pipeline:
+  # fast: 更快；balanced: 默认；strict: 更保守。
+  mode: balanced
+  # 强制开启审校 Agent。关闭时，balanced/strict 仍可能按条件触发审校。
+  enable_review: false
+  # 强制开启格式修复 Agent。关闭时，balanced/strict 遇到校验失败仍可能触发修复。
+  enable_format_guard: false
+  # 输出校验失败时是否直接报错。
+  fail_on_validation_error: true
+
+# 分段策略。控制一次发送给模型的文本包大小。
+segmentation:
+  max_bundle_chars: 6000
+  max_bundle_segments: 12
+
+# 文风与术语约束，会注入翻译上下文。
+style:
+  tone: technical
+  audience: developers
+  preserve_terms:
+    - OpenAI
+    - Markdown
+    - Python
+  instructions:
+    - Keep protected placeholders unchanged.
+    - Do not alter Markdown control syntax.
+
+# 输出设置。
+output:
+  # 可用变量：{stem} 原文件名，{lang} 目标语言缩写。
+  file_suffix_template: "{stem}.{lang}.md"
+  # 是否同时写出 *.report.json 报告。
+  write_report: true
+
+# 术语表路径，可选。指向一个 YAML 文件。
+glossary_path:
+
+# 执行设置。
+execution:
+  # 多文件或多目标语言时的最大并行任务数。
+  max_parallel_translations: 3

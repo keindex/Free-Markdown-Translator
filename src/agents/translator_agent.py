@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.core.errors import TranslationPipelineError
 from src.agents.prompts import build_translator_prompts
 from src.core.types import DocumentContext, SegmentBundle, TranslationResult
 from src.llm.provider import LLMProvider
@@ -11,19 +12,11 @@ class TranslatorAgent:
 
     def translate_bundle(self, bundle: SegmentBundle, context: DocumentContext, target_lang: str) -> list[TranslationResult]:
         if self.provider is None:
-            return [
-                TranslationResult(
-                    segment_id=segment.segment_id,
-                    translated_text=segment.source_text,
-                    notes=["No provider configured; source text returned unchanged."],
-                    confidence=0.0,
-                )
-                for segment in bundle.segments
-            ]
+            raise TranslationPipelineError("No LLM provider configured; cannot perform translation.")
 
         system_prompt, user_prompt = build_translator_prompts(bundle, context, target_lang)
         payload = self.provider.chat_json(system_prompt, user_prompt, call_label="translate")
-        return [
+        results = [
             TranslationResult(
                 segment_id=item["segment_id"],
                 translated_text=item["translated_text"],
@@ -33,3 +26,13 @@ class TranslatorAgent:
             )
             for item in payload.get("translations", [])
         ]
+        if not results:
+            raise TranslationPipelineError("Model returned no translations for the current bundle.")
+        translated_ids = {item.segment_id for item in results}
+        expected_ids = {segment.segment_id for segment in bundle.segments}
+        missing_ids = sorted(expected_ids - translated_ids)
+        if missing_ids:
+            raise TranslationPipelineError(
+                "Model response is missing translations for segments: " + ", ".join(missing_ids)
+            )
+        return results

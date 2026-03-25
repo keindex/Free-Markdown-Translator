@@ -23,7 +23,7 @@ class OpenAIProvider(LLMProvider):
         resolved_api_key = self._resolve_api_key(api_key=api_key, api_key_env=api_key_env)
         if not resolved_api_key:
             raise ValueError(
-                "No API key available. Set provider.api_key in translator.yaml or "
+                "No API key available. Set provider.api_key in config.yaml or "
                 "set provider.api_key_env to an environment variable name."
             )
         self.client = OpenAI(api_key=resolved_api_key, base_url=base_url)

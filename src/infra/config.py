@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,6 @@ class PipelineConfig:
     mode: str = "balanced"
     enable_review: bool = False
     enable_format_guard: bool = False
-    enable_translation_memory: bool = False
     fail_on_validation_error: bool = True
     review_min_bundle_chars: int = 1600
     review_min_segments: int = 6
@@ -34,7 +33,6 @@ class PipelineConfig:
 @dataclass
 class SegmentationConfig:
     max_bundle_chars: int = 6000
-    min_bundle_segments: int = 3
     max_bundle_segments: int = 12
 
 
@@ -53,6 +51,11 @@ class OutputConfig:
 
 
 @dataclass
+class ExecutionConfig:
+    max_parallel_translations: int = 1
+
+
+@dataclass
 class TranslatorConfig:
     target_languages: list[str] = field(default_factory=lambda: ["zh-CN"])
     provider: ProviderConfig = field(default_factory=ProviderConfig)
@@ -60,6 +63,7 @@ class TranslatorConfig:
     segmentation: SegmentationConfig = field(default_factory=SegmentationConfig)
     style: StyleConfig = field(default_factory=StyleConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     glossary_path: str | None = None
 
 
@@ -93,7 +97,6 @@ def _default_config_dict() -> dict[str, Any]:
             "mode": "balanced",
             "enable_review": False,
             "enable_format_guard": False,
-            "enable_translation_memory": False,
             "fail_on_validation_error": True,
             "review_min_bundle_chars": 1600,
             "review_min_segments": 6,
@@ -101,7 +104,6 @@ def _default_config_dict() -> dict[str, Any]:
         },
         "segmentation": {
             "max_bundle_chars": 6000,
-            "min_bundle_segments": 3,
             "max_bundle_segments": 12,
         },
         "style": {
@@ -114,6 +116,9 @@ def _default_config_dict() -> dict[str, Any]:
             "file_suffix_template": "{stem}.{lang}.md",
             "write_report": True,
         },
+        "execution": {
+            "max_parallel_translations": 1,
+        },
         "glossary_path": None,
     }
 
@@ -122,12 +127,27 @@ def _load_yaml_file(path: Path) -> dict[str, Any]:
         return yaml.safe_load(handle) or {}
 
 
+def _filter_known_keys(section: dict[str, Any], config_type, section_name: str) -> dict[str, Any]:
+    allowed = {item.name for item in fields(config_type)}
+    unknown = sorted(set(section) - allowed)
+    if unknown:
+        logging.warning("Ignoring unsupported config keys in %s: %s", section_name, ", ".join(unknown))
+    return {key: value for key, value in section.items() if key in allowed}
+
+
 def load_config(config_path: str | None = None) -> TranslatorConfig:
     root = _workspace_root()
     candidates = []
     if config_path:
         candidates.append(Path(config_path))
-    candidates.extend([root / "translator.yaml", root / "src" / "translator.yaml"])
+    candidates.extend(
+        [
+            root / "config.yaml",
+            root / "src" / "config.yaml",
+            root / "translator.yaml",
+            root / "src" / "translator.yaml",
+        ]
+    )
 
     loaded: dict[str, Any] | None = None
     loaded_path: Path | None = None
@@ -142,22 +162,17 @@ def load_config(config_path: str | None = None) -> TranslatorConfig:
         data = _merge_dict(data, loaded)
         logging.info("Loaded config from %s", loaded_path)
     else:
-        logging.info("No translator config found, using defaults.")
+        logging.info("No config file found, using defaults.")
 
     return TranslatorConfig(
         target_languages=list(data["target_languages"]),
         provider=ProviderConfig(
-            name=data["provider"]["name"],
-            base_url=data["provider"]["base_url"],
-            api_key=data["provider"].get("api_key"),
-            api_key_env=data["provider"].get("api_key_env", ""),
-            model=data["provider"]["model"],
-            temperature=data["provider"]["temperature"],
-            max_tokens=data["provider"]["max_tokens"],
+            **_filter_known_keys(data["provider"], ProviderConfig, "provider"),
         ),
-        pipeline=PipelineConfig(**data["pipeline"]),
-        segmentation=SegmentationConfig(**data["segmentation"]),
-        style=StyleConfig(**data["style"]),
-        output=OutputConfig(**data["output"]),
+        pipeline=PipelineConfig(**_filter_known_keys(data["pipeline"], PipelineConfig, "pipeline")),
+        segmentation=SegmentationConfig(**_filter_known_keys(data["segmentation"], SegmentationConfig, "segmentation")),
+        style=StyleConfig(**_filter_known_keys(data["style"], StyleConfig, "style")),
+        output=OutputConfig(**_filter_known_keys(data["output"], OutputConfig, "output")),
+        execution=ExecutionConfig(**_filter_known_keys(data["execution"], ExecutionConfig, "execution")),
         glossary_path=data.get("glossary_path"),
     )

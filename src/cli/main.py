@@ -15,13 +15,13 @@ from src.infra.logging import configure_logging
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mdtx", description="Agent-based Markdown translation pipeline.")
-    parser.add_argument("--config", help="Path to translator.yaml", default=None)
+    parser.add_argument("--config", help="Path to config.yaml", default=None)
     parser.add_argument("--verbose", action="store_true", help="Enable more detailed logs.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     translate = subparsers.add_parser("translate", help="Translate one or more markdown files.")
     translate.add_argument("paths", nargs="+", help="Markdown files to translate.")
-    translate.add_argument("--to", nargs="+", help="Target languages. Defaults to translator.yaml.")
+    translate.add_argument("--to", nargs="+", help="Target languages. Defaults to config.yaml.")
     translate.add_argument("--output", help="Explicit output file path. Only valid for one input file and one target language.")
 
     validate = subparsers.add_parser("validate", help="Validate a markdown file.")
