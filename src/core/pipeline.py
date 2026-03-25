@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import Executor, Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Callable
 
 from src.agents.format_guard_agent import FormatGuardAgent
 from src.agents.reviewer_agent import ReviewerAgent
@@ -46,7 +48,15 @@ class TranslationPipeline:
         self.renderer = MarkdownRenderer()
         self.report_builder = OutputReportBuilder()
 
-    def run(self, input_path: Path, target_lang: str, write_output: bool = True, output_path: Path | None = None) -> PipelineResult:
+    def run(
+        self,
+        input_path: Path,
+        target_lang: str,
+        write_output: bool = True,
+        output_path: Path | None = None,
+        bundle_executor: Executor | None = None,
+        bundle_progress_callback: Callable[[Path, str, str], None] | None = None,
+    ) -> PipelineResult:
         logging.info("Pipeline start: source=%s target=%s", input_path, target_lang)
         source_text = input_path.read_text(encoding="utf-8")
         parsed = self.parser.parse(source_text, input_path, target_lang)
@@ -60,28 +70,18 @@ class TranslationPipeline:
         bundles = self.orchestrator.build_bundles(segments, context, self.config)
         logging.info("Built %s translation bundles.", len(bundles))
 
-        all_translations: list[TranslationResult] = []
         segment_lookup = {segment.segment_id: segment for segment in segments}
         mode = self._normalized_mode()
-        for index, bundle in enumerate(bundles, start=1):
-            logging.info(
-                "Translating bundle %s/%s: id=%s segments=%s",
-                index,
-                len(bundles),
-                bundle.bundle_id,
-                len(bundle.segments),
-            )
-            translations = self.translator_agent.translate_bundle(
-                bundle=bundle,
-                context=context,
-                target_lang=target_lang,
-            )
-            if self._should_run_review(bundle, translations):
-                logging.info("Reviewing bundle %s (mode=%s).", bundle.bundle_id, mode)
-                translations = self.reviewer_agent.review_bundle(bundle, translations, context)
-            for item in translations:
-                item.translated_text = self.protected_span_processor.restore(item.translated_text, segment_lookup[item.segment_id])
-            all_translations.extend(translations)
+        all_translations = self._translate_bundles(
+            bundles=bundles,
+            context=context,
+            target_lang=target_lang,
+            segment_lookup=segment_lookup,
+            mode=mode,
+            input_path=input_path,
+            bundle_executor=bundle_executor,
+            bundle_progress_callback=bundle_progress_callback,
+        )
 
         output_text, validation, all_translations = self._render_and_validate(
             parsed=parsed,
@@ -126,6 +126,15 @@ class TranslationPipeline:
         )
         result.report = self.report_builder.build(result)
         return result
+
+    def count_bundles(self, input_path: Path, target_lang: str) -> int:
+        source_text = input_path.read_text(encoding="utf-8")
+        parsed = self.parser.parse(source_text, input_path, target_lang)
+        segments = self.extractor.extract(parsed)
+        glossary = self.glossary.load(self.config.glossary_path)
+        context = self.context_builder.build(parsed, segments, self.config, glossary)
+        bundles = self.orchestrator.build_bundles(segments, context, self.config)
+        return len(bundles)
 
     def _build_output_path(self, input_path: Path, target_lang: str) -> Path:
         normalized_lang = self._normalize_lang_for_filename(target_lang)
@@ -180,6 +189,108 @@ class TranslationPipeline:
             len(validation.warnings),
         )
         return output_text, validation, translations
+
+    def _translate_bundles(
+        self,
+        bundles,
+        context,
+        target_lang: str,
+        segment_lookup,
+        mode: str,
+        input_path: Path,
+        bundle_executor: Executor | None,
+        bundle_progress_callback: Callable[[Path, str, str], None] | None,
+    ) -> list[TranslationResult]:
+        if not bundles:
+            return []
+
+        configured_workers = max(1, self.config.execution.max_parallel_translations)
+        if configured_workers == 1 and bundle_executor is None:
+            all_translations: list[TranslationResult] = []
+            for index, bundle in enumerate(bundles, start=1):
+                logging.info(
+                    "Translating bundle %s/%s: id=%s segments=%s",
+                    index,
+                    len(bundles),
+                    bundle.bundle_id,
+                    len(bundle.segments),
+                )
+                translations = self._process_bundle(bundle, context, target_lang, segment_lookup, mode)
+                all_translations.extend(translations)
+                if bundle_progress_callback is not None:
+                    bundle_progress_callback(input_path, target_lang, bundle.bundle_id)
+            return all_translations
+
+        owns_executor = bundle_executor is None
+        executor = bundle_executor or ThreadPoolExecutor(
+            max_workers=min(configured_workers, len(bundles)),
+            thread_name_prefix="mdtx-bundle",
+        )
+        try:
+            future_to_bundle: dict[Future[list[TranslationResult]], tuple[int, object]] = {}
+            for index, bundle in enumerate(bundles, start=1):
+                logging.info(
+                    "Queueing bundle %s/%s: id=%s segments=%s",
+                    index,
+                    len(bundles),
+                    bundle.bundle_id,
+                    len(bundle.segments),
+                )
+                future = executor.submit(
+                    self._process_bundle,
+                    bundle,
+                    context,
+                    target_lang,
+                    segment_lookup,
+                    mode,
+                )
+                future_to_bundle[future] = (index, bundle)
+
+            ordered_results: dict[int, list[TranslationResult]] = {}
+            try:
+                for future in as_completed(future_to_bundle):
+                    index, bundle = future_to_bundle[future]
+                    ordered_results[index] = future.result()
+                    if bundle_progress_callback is not None:
+                        bundle_progress_callback(input_path, target_lang, bundle.bundle_id)
+            except Exception:
+                for pending_future in future_to_bundle:
+                    if not pending_future.done():
+                        pending_future.cancel()
+                raise
+
+            all_translations: list[TranslationResult] = []
+            for index in range(1, len(bundles) + 1):
+                all_translations.extend(ordered_results[index])
+            return all_translations
+        finally:
+            if owns_executor:
+                executor.shutdown(wait=True)
+
+    def _process_bundle(
+        self,
+        bundle,
+        context,
+        target_lang: str,
+        segment_lookup,
+        mode: str,
+    ) -> list[TranslationResult]:
+        logging.info(
+            "Translating bundle: id=%s segments=%s",
+            bundle.bundle_id,
+            len(bundle.segments),
+        )
+        translations = self.translator_agent.translate_bundle(
+            bundle=bundle,
+            context=context,
+            target_lang=target_lang,
+        )
+        if self._should_run_review(bundle, translations):
+            logging.info("Reviewing bundle %s (mode=%s).", bundle.bundle_id, mode)
+            translations = self.reviewer_agent.review_bundle(bundle, translations, context)
+        for item in translations:
+            item.translated_text = self.protected_span_processor.restore(item.translated_text, segment_lookup[item.segment_id])
+        return translations
 
     @staticmethod
     def _translations_by_bundle(bundles, translations: list[TranslationResult]) -> dict[str, list[TranslationResult]]:

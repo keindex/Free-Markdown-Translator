@@ -53,6 +53,10 @@ segmentation:
   max_bundle_chars: 6000
   max_bundle_segments: 12
 
+# 输入规则。目录输入时会递归匹配文件。
+input:
+  file_pattern: "*.md"
+
 # 术语和文风提示，会注入给翻译 Agent。
 style:
   tone: technical
@@ -67,13 +71,14 @@ style:
 
 # 输出文件和报告设置。
 output:
+  directory: output
   file_suffix_template: "{stem}.{lang}.md"
   write_report: true
 
 # 可选术语表路径。文件不存在时会自动忽略。
 glossary_path:
 
-# 并行执行设置。
+# 并行执行设置。控制全局 bundle 级翻译并发。
 execution:
   max_parallel_translations: 4
 ```
@@ -85,19 +90,23 @@ execution:
 - 如果 `provider.api_key` 已填写，就不再需要环境变量
 - 源语言不再配置，由模型自动识别
 - `pipeline.mode` 支持 `fast`、`balanced`、`strict`
+- `input.file_pattern` 控制目录输入时递归匹配哪些文件，默认 `*.md`
 - `segmentation.max_bundle_chars` 和 `segmentation.max_bundle_segments` 用来控制分段大小
 - `style` 用来约束语气、受众和术语保留
+- `output.directory` 是翻译结果的根目录，默认 `output`
 - `output.write_report` 控制是否生成 `*.report.json`
 - `glossary_path` 可指向 YAML 术语表文件
-- `execution.max_parallel_translations` 控制多目标语言/多文件翻译时的最大并行任务数，默认 `1`
+- `execution.max_parallel_translations` 控制全局 bundle 级最大并行翻译数，默认 `1`
+- 例如 2 个文件各拆成 20 个 bundle，若该值为 `5`，则会在全部 40 个 bundle 中最多同时翻译 `5` 个
 - 默认推荐 `balanced`：只常驻 `TranslatorAgent`，`ReviewerAgent` 和 `FormatGuardAgent` 按需触发
-- 普通日志会记录模型调用的阶段、模型名、耗时和输入输出大小；并行翻译时会自动带上任务标识
+- 命令行会显示按 bundle 统计的实时翻译进度条；普通日志仍会记录模型调用阶段、模型名、耗时和输入输出大小
 - `--verbose` 会额外输出模型完整输入和原始输出，便于排查 prompt/response 问题
 
 命令示例：
 
 ```bash
 python src/cli/main.py translate README.md --to zh-CN
+python src/cli/main.py translate doc --to english japanese -o output --match "*.md"
 python src/cli/main.py validate README.md
 python src/cli/main.py report README.md --to zh-CN
 python src/cli/main.py --verbose translate README.md

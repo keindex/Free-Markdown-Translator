@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import threading
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,12 +12,16 @@ from src.agents.format_guard_agent import FormatGuardAgent
 from src.agents.reviewer_agent import ReviewerAgent
 from src.agents.translator_agent import TranslatorAgent
 from src.core.pipeline import TranslationPipeline
+from src.core.orchestrator import Orchestrator
 from src.infra.config import TranslatorConfig
 from src.infra.logging import log_task_context
 from src.llm.client import OpenAIProvider
+from src.memory.document_context import DocumentContextBuilder
+from src.memory.glossary import Glossary
 from src.parser.markdown_parser import MarkdownParser
 from src.parser.segment_extractor import SegmentExtractor
 from src.validators.markdown_validator import MarkdownValidator
+from tqdm import tqdm
 
 
 def _build_provider(config: TranslatorConfig):
@@ -71,6 +76,30 @@ class TranslationTask:
 def _resolve_parallel_workers(config: TranslatorConfig, task_count: int) -> int:
     configured = max(1, config.execution.max_parallel_translations)
     return min(configured, max(1, task_count))
+
+
+def _resolve_bundle_workers(config: TranslatorConfig) -> int:
+    return max(1, config.execution.max_parallel_translations)
+
+
+class BundleProgressTracker:
+    def __init__(self, total_bundles: int) -> None:
+        self._lock = threading.Lock()
+        self._bar = tqdm(
+            total=total_bundles,
+            desc="Translating bundles",
+            unit="bundle",
+            dynamic_ncols=True,
+        )
+
+    def update(self, input_path: Path, target_lang: str, bundle_id: str) -> None:
+        with self._lock:
+            self._bar.set_postfix_str(f"{input_path.name} -> {target_lang} [{bundle_id}]")
+            self._bar.update(1)
+
+    def close(self) -> None:
+        with self._lock:
+            self._bar.close()
 
 
 def _resolve_relative_output_path(input_path: Path, source_root: Path | None = None) -> Path:
@@ -158,6 +187,43 @@ def _run_translation_task(task: TranslationTask, config: TranslatorConfig):
         return task, result
 
 
+def _count_task_bundles(task: TranslationTask, config: TranslatorConfig) -> int:
+    parser = MarkdownParser()
+    extractor = SegmentExtractor()
+    context_builder = DocumentContextBuilder()
+    glossary = Glossary()
+    orchestrator = Orchestrator()
+
+    source_text = task.source.input_path.read_text(encoding="utf-8")
+    parsed = parser.parse(source_text, task.source.input_path, task.target_lang)
+    segments = extractor.extract(parsed)
+    glossary_terms = glossary.load(config.glossary_path)
+    context = context_builder.build(parsed, segments, config, glossary_terms)
+    bundles = orchestrator.build_bundles(segments, context, config)
+    return len(bundles)
+
+
+def _run_translation_task_with_shared_bundle_executor(
+    task: TranslationTask,
+    config: TranslatorConfig,
+    bundle_executor: ThreadPoolExecutor,
+    progress_tracker: BundleProgressTracker | None,
+):
+    with log_task_context(task.label):
+        pipeline = build_pipeline(copy.deepcopy(config))
+        logging.info("Translation task started: source=%s target=%s", task.source.input_path, task.target_lang)
+        result = pipeline.run(
+            task.source.input_path,
+            task.target_lang,
+            write_output=True,
+            output_path=task.output_path,
+            bundle_executor=bundle_executor,
+            bundle_progress_callback=progress_tracker.update if progress_tracker is not None else None,
+        )
+        logging.info("Translation task finished: output=%s", result.output_path)
+        return task, result
+
+
 def translate_command(
     paths: list[str],
     target_langs: list[str],
@@ -172,64 +238,92 @@ def translate_command(
     resolved_output_dir = Path(output_dir or config.output.directory)
     sources = _collect_translation_sources(paths, resolved_match_pattern)
     tasks = _build_translation_tasks(sources, target_langs, resolved_output_dir, config)
-    max_workers = _resolve_parallel_workers(config, len(tasks))
+    task_workers = _resolve_parallel_workers(config, len(tasks))
+    bundle_workers = _resolve_bundle_workers(config)
+    total_bundles = sum(_count_task_bundles(task, config) for task in tasks)
     logging.info(
-        "Translate job started: files=%s targets=%s tasks=%s max_parallel=%s",
+        "Translate job started: files=%s targets=%s tasks=%s bundles=%s task_workers=%s bundle_workers=%s",
         len(sources),
         ", ".join(target_langs),
         len(tasks),
-        max_workers,
+        total_bundles,
+        task_workers,
+        bundle_workers,
     )
 
-    if max_workers == 1:
-        for task in tasks:
-            _, result = _run_translation_task(task, config)
-            if config.output.write_report and result.output_path is not None:
-                report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
-                report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
-                logging.info("Wrote translation report: %s", report_path)
+    if task_workers == 1 and bundle_workers == 1:
+        progress_tracker = BundleProgressTracker(total_bundles)
+        try:
+            for task in tasks:
+                pipeline = build_pipeline(copy.deepcopy(config))
+                _, result = task, pipeline.run(
+                    task.source.input_path,
+                    task.target_lang,
+                    write_output=True,
+                    output_path=task.output_path,
+                    bundle_progress_callback=progress_tracker.update,
+                )
+                if config.output.write_report and result.output_path is not None:
+                    report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
+                    report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
+                    logging.info("Wrote translation report: %s", report_path)
+        finally:
+            progress_tracker.close()
         return 0
 
     completed = 0
     future_to_task = {}
-    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="mdtx-translate") as executor:
-        for task in tasks:
-            future_to_task[executor.submit(_run_translation_task, task, config)] = task
+    progress_tracker = BundleProgressTracker(total_bundles)
+    try:
+        with ThreadPoolExecutor(max_workers=task_workers, thread_name_prefix="mdtx-translate") as executor:
+            with ThreadPoolExecutor(max_workers=bundle_workers, thread_name_prefix="mdtx-bundle") as bundle_executor:
+                for task in tasks:
+                    future_to_task[
+                        executor.submit(
+                            _run_translation_task_with_shared_bundle_executor,
+                            task,
+                            config,
+                            bundle_executor,
+                            progress_tracker,
+                        )
+                    ] = task
 
-        pending = set(future_to_task)
-        while pending:
-            done, pending = wait(pending, return_when=FIRST_EXCEPTION)
-            for future in done:
-                task = future_to_task[future]
-                try:
-                    _, result = future.result()
-                except Exception:
-                    for pending_future in pending:
-                        pending_future.cancel()
-                    logging.exception(
-                        "Translation task failed: source=%s target=%s",
-                        task.source.input_path,
-                        task.target_lang,
-                    )
-                    raise
+                pending = set(future_to_task)
+                while pending:
+                    done, pending = wait(pending, return_when=FIRST_EXCEPTION)
+                    for future in done:
+                        task = future_to_task[future]
+                        try:
+                            _, result = future.result()
+                        except Exception:
+                            for pending_future in pending:
+                                pending_future.cancel()
+                            logging.exception(
+                                "Translation task failed: source=%s target=%s",
+                                task.source.input_path,
+                                task.target_lang,
+                            )
+                            raise
 
-                completed += 1
-                if config.output.write_report and result.output_path is not None:
-                    report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
-                    report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
-                    logging.info(
-                        "[%s/%s] Wrote translation report: %s",
-                        completed,
-                        len(tasks),
-                        report_path,
-                    )
-                logging.info(
-                    "[%s/%s] Completed translation: %s -> %s",
-                    completed,
-                    len(tasks),
-                    task.source.input_path,
-                    result.output_path,
-                )
+                        completed += 1
+                        if config.output.write_report and result.output_path is not None:
+                            report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
+                            report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
+                            logging.info(
+                                "[%s/%s] Wrote translation report: %s",
+                                completed,
+                                len(tasks),
+                                report_path,
+                            )
+                        logging.info(
+                            "[%s/%s] Completed translation: %s -> %s",
+                            completed,
+                            len(tasks),
+                            task.source.input_path,
+                            result.output_path,
+                        )
+    finally:
+        progress_tracker.close()
     return 0
 
 

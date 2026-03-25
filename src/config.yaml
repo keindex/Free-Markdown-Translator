@@ -65,5 +65,5 @@ glossary_path:
 
 # 执行设置。
 execution:
-  # 多文件或多目标语言时的最大并行任务数。
-  max_parallel_translations: 3
+  # 全局 bundle 级最大并行翻译数。
+  max_parallel_translations: 10
