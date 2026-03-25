@@ -1,18 +1,21 @@
-# Free Markdown Translator 配置文件
-
 # 目标语言列表。支持一次翻译为多个语言。
 target_languages:
   - english
   - japanese
 
+# 执行设置。
+execution:
+  # 全局 bundle 级最大并行翻译数。
+  max_parallel_translations: 10
+
 # 大模型服务配置。当前实现为 OpenAI 兼容接口。
 provider:
   name: openai
-  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  base_url: https://api.openai.com/v1
   # 推荐通过环境变量提供密钥；如需直填，可写在 api_key。
   api_key:
   api_key_env: OPENAI_API_KEY
-  model: qwen3.5-flash
+  model: gpt-4o
   # 温度越低，输出越稳定。
   temperature: 0.2
   # 单次响应的最大 token 数。
@@ -20,7 +23,7 @@ provider:
 
 # 翻译流程控制。
 pipeline:
-  # fast: 更快；balanced: 默认；strict: 更保守。
+  # fast: 更快（不做review和guard）；balanced: 默认（按条件触发review和guard）；strict: 更严格（执行review和guard）。
   mode: balanced
   # 强制开启审校 Agent。关闭时，balanced/strict 仍可能按条件触发审校。
   enable_review: false
@@ -43,6 +46,7 @@ input:
 style:
   tone: technical
   audience: developers
+  # 不翻译的专有名词或术语列表，会注入上下文并在翻译过程中保护。
   preserve_terms:
     - OpenAI
     - Markdown
@@ -59,8 +63,3 @@ output:
   file_suffix_template: "{stem}.{lang}.md"
   # 是否同时写出 *.report.json 报告。
   write_report: false
-
-# 执行设置。
-execution:
-  # 全局 bundle 级最大并行翻译数。
-  max_parallel_translations: 10
