@@ -11,12 +11,12 @@ provider:
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
   # 推荐通过环境变量提供密钥；如需直填，可写在 api_key。
   api_key:
-  api_key_env: DASHSCOPE_API_KEY
+  api_key_env: OPENAI_API_KEY
   model: qwen3.5-flash
   # 温度越低，输出越稳定。
   temperature: 0.2
   # 单次响应的最大 token 数。
-  max_tokens: 4000
+  max_tokens: 8000
 
 # 翻译流程控制。
 pipeline:
@@ -32,7 +32,12 @@ pipeline:
 # 分段策略。控制一次发送给模型的文本包大小。
 segmentation:
   max_bundle_chars: 6000
-  max_bundle_segments: 12
+  max_bundle_segments: 36
+
+# 输入规则。
+input:
+  # 当传入目录时，递归匹配需要翻译的文件。
+  file_pattern: "*.md"
 
 # 文风与术语约束，会注入翻译上下文。
 style:
@@ -48,6 +53,8 @@ style:
 
 # 输出设置。
 output:
+  # 所有翻译结果会输出到这个目录下，并尽量保留原目录层级。
+  directory: output
   # 可用变量：{stem} 原文件名，{lang} 目标语言缩写。
   file_suffix_template: "{stem}.{lang}.md"
   # 是否同时写出 *.report.json 报告。
