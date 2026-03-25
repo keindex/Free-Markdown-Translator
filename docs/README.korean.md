@@ -1,24 +1,22 @@
 ![Free-Markdown-Translator](https://socialify.git.ci/CrazyMayfly/Free-Markdown-Translator/image?custom_description=Free+Markdown+Translator%E6%98%AF%E4%B8%80%E6%AC%BE%E5%9F%BA%E4%BA%8E+AI+Agent+%E6%B5%81%E6%B0%B4%E7%BA%BF%E7%9A%84+Markdown+%E6%96%87%E6%A1%A3%E7%BF%BB%E8%AF%91%E5%99%A8&description=1&font=Bitter&forks=1&language=1&name=1&owner=1&pattern=Solid&stargazers=1&theme=Auto)
 
-[English](docs/README.english.md) |  [Deutsch](docs/README.german.md) | [日本語](docs/README.japanese.md) | [русский](docs/README.russian.md) | [한국어](docs/README.korean.md) | [Português](docs/README.portuguese.md) | [Español](docs/README.spanish.md) | [Français](docs/README.french.md) | [हिन्दी](docs/README.arabic.md)
+# 무료 마크다운 번역기
 
-# Free Markdown Translator
+무료 마크다운 번역기는 AI 에이전트 파이프라인 기반의 마크다운 문서 번역 도구로, 마크다운 문서를 모든 언어로 번역할 수 있으며, 번역 과정에서 원래 마크다운 구조를 최대한 유지하면서 의미적 일관성을 유지하는 데 중점을 둡니다. 문서 사이트, 로컬 지식 베이스, README, 다국어 기술 문서 등의 시나리오에 적합합니다. ✨
 
-Free Markdown Translator 是一个基于 AI Agent 流水线的 Markdown 文档翻译工具，可以将Mardown文档翻译为任意语言，专注于在翻译过程中尽量保留原始 Markdown 结构，同时保持语义连贯性。它适合用于文档站点、本地知识库、README、多语言技术文档等场景。 ✨
+## 🚀 주요 기능 및 특성
 
-## 🚀 主要功能和特性
+- 🧠 AI 기반 번역 프로세스 및 AST 구문 트리 검증을 사용하여 형식 안정성과 더 일관된 컨텍스트 일관성을 유지할 수 있습니다
+- ✂️ 언어 스타일, 입력 매칭, 출력 형식을 사용자 정의할 수 있으며, 다양한 요구 사항에 맞게 다양한 번역 모드 (빠름, 균형, 엄격) 를 지원합니다
+- 🤖 `TranslatorAgent`, `ReviewerAgent`, `FormatGuardAgent` 를 내장하여 각각 번역, 검수 및 형식 수정을 담당합니다 (번역 모드에 따라 활성화)
+- 🧱 front matter, 제목 수준, 목록, 표, 코드 블록, 링크 등의 구조 보호를 지원합니다
+- ✅ 구조 검증 및 출력 보고서를 제공하여 형식 드리프트 및 콘텐츠 이상을 발견하는 데 도움을 줍니다
+- 🔌 OpenAI 스타일 인터페이스와 호환되며, OpenAI 또는 기타 호환 서비스에 연결할 수 있습니다
+- ⚙️ 다중 대상 언어, 디렉토리 재귀 번역, 병렬 처리, 문체 제약 및 용어 보존을 지원합니다
 
-- 🧠 使用 AI 驱动翻译流程以及AST语法树校验，可以保持格式的稳定性和更连贯上下文一致性
-- ✂️ 可以自定义语言风格，输入匹配，输出格式，支持不同的翻译模式（快速、平衡、严格）以适应不同需求
-- 🤖 内置 `TranslatorAgent`、`ReviewerAgent`、`FormatGuardAgent`，分别负责翻译、审校和格式修复（按翻译模式启用）
-- 🧱 支持 front matter、标题层级、列表、表格、代码块、链接等结构保护
-- ✅ 提供结构校验与输出报告，帮助发现格式漂移和内容异常
-- 🔌 兼容 OpenAI 风格接口，可接入 OpenAI 或其他兼容服务
-- ⚙️ 支持多目标语言、目录递归翻译、并行处理、文风约束和术语保留
+## ⚡ 빠른 시작
 
-## ⚡ Quick Start
-
-### 方式一：Clone 仓库后启动
+### 방법 1: 저장소 Clone 후 시작
 
 ```bash
 git clone https://github.com/CrazyMayfly/Free-Markdown-Translator.git
@@ -27,104 +25,104 @@ pip install -r requirements.txt
 python src/cli/main.py --init-config
 ```
 
-初始化后，默认配置文件会生成到：
+초기화 후 기본 설정 파일이 다음 위치에 생성됩니다:
 
 ```text
 ~/.mdtx/config.yaml
 ```
 
-配置好 API Key 后即可开始翻译：
+API Key 를 설정한 후 번역을 시작할 수 있습니다:
 
 ```bash
 python src/cli/main.py README.md --to english,japanese
 ```
 
-### 方式二：下载 exe 直接使用
+### 방법 2: exe 다운로드 후 바로 사용
 
-如果你使用的是 Windows，也可以下载已经打包好的 `mdtx.exe` 后直接运行。首次使用建议先初始化配置：
+Windows 를 사용하는 경우, 이미 패키징된 `mdtx.exe` 를 다운로드하여 바로 실행할 수도 있습니다. 처음 사용할 때는 설정을 먼저 초기화하는 것을 권장합니다:
 
 ```powershell
 .\mdtx.exe --init-config
 ```
 
-然后编辑：
+그런 다음 편집:
 
 ```text
 ~/.mdtx/config.yaml
 ```
 
-配置完成后即可执行：
+설정 완료 후 다음을 실행합니다:
 
 ```powershell
 .\mdtx.exe README.md --to Chinese
 ```
 
-### 常用场景命令示例
+### 자주 사용하는 시나리오 명령어 예시
 
-单文件翻译为中文：
+단일 파일을 중국어로 번역:
 
 ```bash
 .\mdtx.exe README.md --to Chinese
 ```
 
-把整个 `doc` 目录递归翻译为英文和日文：
+전체 `doc` 디렉토리를 영어와 일본어로 재귀적으로 번역:
 
 ```bash
 .\mdtx.exe doc --to english,japanese
 ```
 
-指定输出目录：
+출력 디렉토리 지정:
 
 ```bash
 .\mdtx.exe README.md --to Chinese --output translated
 ```
 
-只匹配目录中指定文件名格式的 Markdown 文件 （使用正则匹配）：
+디렉토리 내 지정된 파일명 패턴의 Markdown 파일만 매칭합니다 (정규식 사용):
 
 ```bash
 .\mdtx.exe docs --to Chinese --match "name*.md"
 ```
 
-提高并行度，加快大批量翻译：
+병렬성을 높여 대량 번역 속도를 향상시킵니다:
 
 ```bash
 .\mdtx.exe docs --to Chinese --threads 10
 ```
 
-开启更严格的翻译和校验流程，消耗更多token，花费更多时间但是获取更好的翻译效果：
+더 엄격한 번역 및 검증 프로세스를 활성화합니다. 더 많은 토큰을 소비하고 시간이 더 소요되지만 더 나은 번역 결과를 얻습니다:
 
 ```bash
 .\mdtx.exe docs --to Chinese --mode strict
 ```
 
-强制开启审校和格式保护：
+검수 및 형식 보호를 강제로 활성화합니다:
 
 ```bash
 .\mdtx.exe docs --to Chinese --review true --guard true
 ```
 
-切换模型或文风：
+모델 또는 스타일을 전환합니다:
 
 ```bash
 .\mdtx.exe README.md --to Chinese --model gpt-5-mini --tone technical
 ```
 
-输出详细日志，便于排查：
+상세 로그를 출력하여 디버깅을 용이하게 합니다:
 
 ```bash
 .\mdtx.exe --verbose README.md --to Chinese
 ```
 
-## ⚙️ 配置说明
+## ⚙️ 구성 설명
 
-项目会按以下优先顺序查找配置文件：
+프로젝트는 다음 우선순위로 구성 파일을 찾습니다:
 
-1. `--config` 指定的路径
-2. 仓库根目录下的 `config.yaml`
+1. `--config` 로 지정된 경로
+2.  저장소 루트 디렉터리 내 `config.yaml`
 3. `src/config.yaml`
 4. `~/.mdtx/config.yaml`
 
-一个典型配置如下：
+일반적인 구성은 다음과 같습니다:
 
 ```yaml
 # 目标语言列表。支持一次翻译为多个语言。
@@ -194,23 +192,23 @@ output:
   write_report: false
 ```
 
-### API Key 配置示例
+### API Key 구성 예시
 
-推荐使用环境变量：
+환경 변수 사용을 권장합니다:
 
 ```powershell
 $env:OPENAI_API_KEY="your-api-key"
 .\mdtx.exe README.md --to Chinese
 ```
 
-也可以写在配置文件中（不推荐，存在安全风险）：
+구성 파일에 작성할 수도 있습니다 (권장하지 않음, 보안 위험 있음):
 
 ```yaml
 provider:
   api_key: xxxxx
 ```
 
-如果你使用兼容接口，也可以在 `config.yaml` 中修改：
+호환 인터페이스를 사용하는 경우 `config.yaml` 에서 수정할 수도 있습니다:
 
 ```yaml
 provider:
@@ -220,24 +218,24 @@ provider:
   model: your-model-name
 ```
 
-## 🔄 执行流程与机制
+## 🔄 실행 흐름 및 메커니즘
 
-这个项目不是“把整篇 Markdown 一次性丢给模型翻译”，而是一个更稳妥的流水线：
+이 프로젝트는 "전체 Markdown 문서를 한 번에 모델에 전달하여 번역하는" 것이 아니라, 더 안정적인 파이프라인을 사용합니다:
 
-1. `MarkdownParser` 先把源文档解析成 AST，识别 Markdown 结构
-2. `SegmentExtractor` 从 AST 中提取可翻译片段，并保护占位符、控制语法等敏感内容
-3. `DocumentContextBuilder` 生成文档摘要、风格约束、术语上下文
-4. `Orchestrator` 按配置把 segment 组织成多个 bundle，控制每次模型调用的大小
-5. `TranslatorAgent` 对每个 bundle 进行翻译
-6. `ReviewerAgent` 在 `balanced` / `strict` 模式下按条件进行审校
-7. `MarkdownRenderer` 将翻译结果重新映射回 AST 并渲染为 Markdown
-8. `MarkdownValidator` 校验 front matter 和整体结构
-9. 如果校验失败，`FormatGuardAgent` 会在需要时尝试修复格式问题
-10. 最终输出翻译后的 Markdown 和可选报告文件
+1. `MarkdownParser` 소스 문서를 AST 로 파싱하여 Markdown 구조 식별
+2. `SegmentExtractor` AST 에서 번역 가능한 세그먼트를 추출하고 플레이스홀더, 제어 구문 등 민감한 내용 보호
+3. `DocumentContextBuilder` 문서 요약, 스타일 제약, 용어 컨텍스트 생성
+4. `Orchestrator` 설정에 따라 segment 를 여러 bundle 로 구성하여 각 모델 호출의 크기 제어
+5. `TranslatorAgent` 각 bundle 에 대해 번역 수행
+6. `ReviewerAgent` 는 `balanced` / `strict` 모드에서 조건부 검토를 수행합니다
+7. `MarkdownRenderer` 는 번역 결과를 AST 로 다시 매핑하고 Markdown 으로 렌더링합니다
+8. `MarkdownValidator` 는 front matter 와 전체 구조를 검증합니다
+9. 검증에 실패할 경우 `FormatGuardAgent` 는 필요시 형식 문제를 수정하려고 시도합니다
+10. 최종적으로 번역된 Markdown 과 선택적 보고 파일을 출력합니다
 
-这套机制的目标是：既尽量保留 Markdown 原貌，又让翻译结果具备足够的上下文一致性和可维护性。 🛡️
+이 메커니즘의 목표는 Markdown 의 원본 형태를 최대한 유지하면서도 번역 결과가 충분한 문맥 일관성과 유지 보수성을 갖도록 하는 것입니다. 🛡️
 
-## 🗂️ 项目结构
+## 🗂️ 프로젝트 구조
 
 ```text
 src/
@@ -252,27 +250,27 @@ src/
 └─ buildtool/     Windows exe 打包脚本与资源
 ```
 
-根目录中的其他重要文件：
+루트 디렉토리의 기타 중요한 파일:
 
-- `config.yaml`：示例配置
-- `requirements.txt`：运行依赖
-- `doc/`：多语言 README 与设计文档
+- `config.yaml`: 예제 구성
+- `requirements.txt`: 실행 의존성
+- `doc/`: 다국어 README 및 설계 문서
 
-## 🧪 开发与测试
+## 🧪 개발 및 테스트
 
-安装依赖：
+의존성 설치:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-如果你准备自行打包 exe，还需要：
+직접 exe 를 패키징하려면 다음도 필요합니다:
 
 ```bash
 pip install -r src/buildtool/requirements-build.txt
 ```
 
-## Star History
+## 스타 히스토리
 
 <a href="https://star-history.com/#CrazyMayfly/Free-Markdown-Translator&Date">
  <picture>
