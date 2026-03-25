@@ -112,6 +112,7 @@ class TranslationPipeline:
 
         final_output_path = output_path or self._build_output_path(input_path, target_lang)
         if write_output:
+            final_output_path.parent.mkdir(parents=True, exist_ok=True)
             final_output_path.write_text(output_text, encoding="utf-8")
             logging.info("Wrote translated markdown: %s", final_output_path)
 

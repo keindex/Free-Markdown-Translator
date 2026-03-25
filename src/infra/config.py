@@ -37,6 +37,11 @@ class SegmentationConfig:
 
 
 @dataclass
+class InputConfig:
+    file_pattern: str = "*.md"
+
+
+@dataclass
 class StyleConfig:
     tone: str = "technical"
     preserve_terms: list[str] = field(default_factory=list)
@@ -46,6 +51,7 @@ class StyleConfig:
 
 @dataclass
 class OutputConfig:
+    directory: str = "output"
     file_suffix_template: str = "{stem}.{lang}.md"
     write_report: bool = True
 
@@ -61,6 +67,7 @@ class TranslatorConfig:
     provider: ProviderConfig = field(default_factory=ProviderConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     segmentation: SegmentationConfig = field(default_factory=SegmentationConfig)
+    input: InputConfig = field(default_factory=InputConfig)
     style: StyleConfig = field(default_factory=StyleConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
@@ -106,6 +113,9 @@ def _default_config_dict() -> dict[str, Any]:
             "max_bundle_chars": 6000,
             "max_bundle_segments": 12,
         },
+        "input": {
+            "file_pattern": "*.md",
+        },
         "style": {
             "tone": "technical",
             "preserve_terms": ["Markdown", "OpenAI", "Python"],
@@ -113,6 +123,7 @@ def _default_config_dict() -> dict[str, Any]:
             "instructions": [],
         },
         "output": {
+            "directory": "output",
             "file_suffix_template": "{stem}.{lang}.md",
             "write_report": True,
         },
@@ -171,6 +182,7 @@ def load_config(config_path: str | None = None) -> TranslatorConfig:
         ),
         pipeline=PipelineConfig(**_filter_known_keys(data["pipeline"], PipelineConfig, "pipeline")),
         segmentation=SegmentationConfig(**_filter_known_keys(data["segmentation"], SegmentationConfig, "segmentation")),
+        input=InputConfig(**_filter_known_keys(data["input"], InputConfig, "input")),
         style=StyleConfig(**_filter_known_keys(data["style"], StyleConfig, "style")),
         output=OutputConfig(**_filter_known_keys(data["output"], OutputConfig, "output")),
         execution=ExecutionConfig(**_filter_known_keys(data["execution"], ExecutionConfig, "execution")),

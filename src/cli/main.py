@@ -20,9 +20,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     translate = subparsers.add_parser("translate", help="Translate one or more markdown files.")
-    translate.add_argument("paths", nargs="+", help="Markdown files to translate.")
+    translate.add_argument("paths", nargs="+", help="Markdown files or directories to translate.")
     translate.add_argument("--to", nargs="+", help="Target languages. Defaults to config.yaml.")
-    translate.add_argument("--output", help="Explicit output file path. Only valid for one input file and one target language.")
+    translate.add_argument("-o", "--output", help="Output directory. Defaults to config.yaml output.directory.")
+    translate.add_argument("--match", help="Glob pattern for files under input directories. Defaults to config.yaml input.file_pattern.")
 
     validate = subparsers.add_parser("validate", help="Validate a markdown file.")
     validate.add_argument("path", help="Markdown file to validate.")
@@ -40,7 +41,13 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(args.config)
 
     if args.command == "translate":
-        return translate_command(args.paths, args.to or config.target_languages, config, args.output)
+        return translate_command(
+            args.paths,
+            args.to or config.target_languages,
+            config,
+            output_dir=args.output,
+            match_pattern=args.match,
+        )
     if args.command == "validate":
         return validate_command(args.path, config)
     if args.command == "report":

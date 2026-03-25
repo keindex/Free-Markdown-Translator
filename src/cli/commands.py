@@ -50,16 +50,22 @@ def _looks_like_output_path(value: str) -> bool:
 
 
 @dataclass(frozen=True)
+class TranslationSource:
+    input_path: Path
+    relative_output_path: Path
+
+
+@dataclass(frozen=True)
 class TranslationTask:
     index: int
     total: int
-    input_path: Path
+    source: TranslationSource
     target_lang: str
     output_path: Path | None
 
     @property
     def label(self) -> str:
-        return f"{self.index}/{self.total} {self.input_path.name} -> {self.target_lang}"
+        return f"{self.index}/{self.total} {self.source.relative_output_path} -> {self.target_lang}"
 
 
 def _resolve_parallel_workers(config: TranslatorConfig, task_count: int) -> int:
@@ -67,20 +73,76 @@ def _resolve_parallel_workers(config: TranslatorConfig, task_count: int) -> int:
     return min(configured, max(1, task_count))
 
 
-def _build_translation_tasks(paths: list[str], target_langs: list[str], output_path: str | None) -> list[TranslationTask]:
-    total = len(paths) * len(target_langs)
+def _resolve_relative_output_path(input_path: Path, source_root: Path | None = None) -> Path:
+    resolved_input = input_path.resolve()
+    cwd = Path.cwd().resolve()
+    try:
+        return resolved_input.relative_to(cwd)
+    except ValueError:
+        pass
+
+    if source_root is not None:
+        resolved_root = source_root.resolve()
+        try:
+            return Path(source_root.name) / resolved_input.relative_to(resolved_root)
+        except ValueError:
+            pass
+
+    return Path(input_path.name)
+
+
+def _collect_translation_sources(paths: list[str], match_pattern: str) -> list[TranslationSource]:
+    sources: list[TranslationSource] = []
+    for raw_path in paths:
+        path = Path(raw_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Input path does not exist: {path}")
+        if path.is_file():
+            sources.append(
+                TranslationSource(
+                    input_path=path,
+                    relative_output_path=_resolve_relative_output_path(path),
+                )
+            )
+            continue
+
+        matched_files = sorted(candidate for candidate in path.rglob(match_pattern) if candidate.is_file())
+        for candidate in matched_files:
+            sources.append(
+                TranslationSource(
+                    input_path=candidate,
+                    relative_output_path=_resolve_relative_output_path(candidate, source_root=path),
+                )
+            )
+    if not sources:
+        raise ValueError(f"No input files matched pattern: {match_pattern}")
+    return sources
+
+
+def _build_task_output_path(source: TranslationSource, target_lang: str, output_dir: Path, config: TranslatorConfig) -> Path:
+    normalized_lang = TranslationPipeline._normalize_lang_for_filename(target_lang)
+    file_name = config.output.file_suffix_template.format(stem=source.relative_output_path.stem, lang=normalized_lang)
+    return output_dir / source.relative_output_path.parent / file_name
+
+
+def _build_translation_tasks(
+    sources: list[TranslationSource],
+    target_langs: list[str],
+    output_dir: Path,
+    config: TranslatorConfig,
+) -> list[TranslationTask]:
+    total = len(sources) * len(target_langs)
     tasks: list[TranslationTask] = []
     index = 1
-    for raw_path in paths:
-        input_path = Path(raw_path)
+    for source in sources:
         for target_lang in target_langs:
             tasks.append(
                 TranslationTask(
                     index=index,
                     total=total,
-                    input_path=input_path,
+                    source=source,
                     target_lang=target_lang,
-                    output_path=Path(output_path) if output_path else None,
+                    output_path=_build_task_output_path(source, target_lang, output_dir, config),
                 )
             )
             index += 1
@@ -90,8 +152,8 @@ def _build_translation_tasks(paths: list[str], target_langs: list[str], output_p
 def _run_translation_task(task: TranslationTask, config: TranslatorConfig):
     with log_task_context(task.label):
         pipeline = build_pipeline(copy.deepcopy(config))
-        logging.info("Translation task started: source=%s target=%s", task.input_path, task.target_lang)
-        result = pipeline.run(task.input_path, task.target_lang, write_output=True, output_path=task.output_path)
+        logging.info("Translation task started: source=%s target=%s", task.source.input_path, task.target_lang)
+        result = pipeline.run(task.source.input_path, task.target_lang, write_output=True, output_path=task.output_path)
         logging.info("Translation task finished: output=%s", result.output_path)
         return task, result
 
@@ -100,18 +162,20 @@ def translate_command(
     paths: list[str],
     target_langs: list[str],
     config: TranslatorConfig,
-    output_path: str | None = None,
+    output_dir: str | None = None,
+    match_pattern: str | None = None,
 ) -> int:
     if any(_looks_like_output_path(lang) for lang in target_langs):
-        raise ValueError("`--to` expects language codes, not file paths. Use `--output` to specify an output file.")
-    if output_path and (len(paths) != 1 or len(target_langs) != 1):
-        raise ValueError("`--output` can only be used with one input file and one target language.")
+        raise ValueError("`--to` expects language codes, not file paths. Use `--output` to specify an output directory.")
 
-    tasks = _build_translation_tasks(paths, target_langs, output_path)
+    resolved_match_pattern = match_pattern or config.input.file_pattern
+    resolved_output_dir = Path(output_dir or config.output.directory)
+    sources = _collect_translation_sources(paths, resolved_match_pattern)
+    tasks = _build_translation_tasks(sources, target_langs, resolved_output_dir, config)
     max_workers = _resolve_parallel_workers(config, len(tasks))
     logging.info(
         "Translate job started: files=%s targets=%s tasks=%s max_parallel=%s",
-        len(paths),
+        len(sources),
         ", ".join(target_langs),
         len(tasks),
         max_workers,
@@ -144,7 +208,7 @@ def translate_command(
                         pending_future.cancel()
                     logging.exception(
                         "Translation task failed: source=%s target=%s",
-                        task.input_path,
+                        task.source.input_path,
                         task.target_lang,
                     )
                     raise
@@ -163,7 +227,7 @@ def translate_command(
                     "[%s/%s] Completed translation: %s -> %s",
                     completed,
                     len(tasks),
-                    task.input_path,
+                    task.source.input_path,
                     result.output_path,
                 )
     return 0
