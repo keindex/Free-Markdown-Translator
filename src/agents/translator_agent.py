@@ -9,7 +9,7 @@ class TranslatorAgent:
     def __init__(self, provider: LLMProvider | None = None) -> None:
         self.provider = provider
 
-    def translate_bundle(self, bundle: SegmentBundle, context: DocumentContext, source_lang: str, target_lang: str) -> list[TranslationResult]:
+    def translate_bundle(self, bundle: SegmentBundle, context: DocumentContext, target_lang: str) -> list[TranslationResult]:
         if self.provider is None:
             return [
                 TranslationResult(
@@ -21,7 +21,7 @@ class TranslatorAgent:
                 for segment in bundle.segments
             ]
 
-        system_prompt, user_prompt = build_translator_prompts(bundle, context, source_lang, target_lang)
+        system_prompt, user_prompt = build_translator_prompts(bundle, context, target_lang)
         payload = self.provider.chat_json(system_prompt, user_prompt, call_label="translate")
         return [
             TranslationResult(

@@ -54,7 +54,6 @@ class OutputConfig:
 
 @dataclass
 class TranslatorConfig:
-    source_language: str = "auto"
     target_languages: list[str] = field(default_factory=lambda: ["zh-CN"])
     provider: ProviderConfig = field(default_factory=ProviderConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
@@ -80,7 +79,6 @@ def _merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 def _default_config_dict() -> dict[str, Any]:
     return {
-        "source_language": "auto",
         "target_languages": ["zh-CN"],
         "provider": {
             "name": "openai",
@@ -147,7 +145,6 @@ def load_config(config_path: str | None = None) -> TranslatorConfig:
         logging.info("No translator config found, using defaults.")
 
     return TranslatorConfig(
-        source_language=data["source_language"],
         target_languages=list(data["target_languages"]),
         provider=ProviderConfig(
             name=data["provider"]["name"],

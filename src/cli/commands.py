@@ -82,7 +82,7 @@ def validate_command(path: str, config: TranslatorConfig) -> int:
     validator = MarkdownValidator()
     input_path = Path(path)
     source_text = input_path.read_text(encoding="utf-8")
-    parsed = parser.parse(source_text, input_path, config.source_language, config.target_languages[0])
+    parsed = parser.parse(source_text, input_path, config.target_languages[0])
     report = validator.validate(parsed, source_text)
     output = {
         "input_path": str(input_path),

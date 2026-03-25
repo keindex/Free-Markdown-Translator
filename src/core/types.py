@@ -66,7 +66,6 @@ class ParsedDocument:
     source_path: Path
     source_text: str
     body_text: str
-    source_lang: str
     target_lang: str
     ast: list[Any]
     metadata: dict[str, Any]

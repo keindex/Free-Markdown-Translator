@@ -49,7 +49,7 @@ class TranslationPipeline:
     def run(self, input_path: Path, target_lang: str, write_output: bool = True, output_path: Path | None = None) -> PipelineResult:
         logging.info("Pipeline start: source=%s target=%s", input_path, target_lang)
         source_text = input_path.read_text(encoding="utf-8")
-        parsed = self.parser.parse(source_text, input_path, self.config.source_language, target_lang)
+        parsed = self.parser.parse(source_text, input_path, target_lang)
         logging.info("Parsed markdown document.")
         segments = self.extractor.extract(parsed)
         parsed.segments = segments  # type: ignore[attr-defined]
@@ -74,7 +74,6 @@ class TranslationPipeline:
             translations = self.translator_agent.translate_bundle(
                 bundle=bundle,
                 context=context,
-                source_lang=self.config.source_language,
                 target_lang=target_lang,
             )
             if self._should_run_review(bundle, translations):
