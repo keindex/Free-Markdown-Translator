@@ -25,7 +25,7 @@ class OpenAIProvider(LLMProvider):
         resolved_api_key = self._resolve_api_key(api_key=api_key, api_key_env=api_key_env)
         if not resolved_api_key:
             raise ValueError(
-                "No API key available. Set provider.api_key in config.yaml or "
+                "No API key available. Set provider.api_key in ~/.mdtx/config.yaml or "
                 "set provider.api_key_env to an environment variable name."
             )
         self.client = OpenAI(api_key=resolved_api_key, base_url=base_url)
@@ -38,7 +38,7 @@ class OpenAIProvider(LLMProvider):
     def chat_json(self, system_prompt: str, user_prompt: str, call_label: str = "llm"):
         start = time.perf_counter()
         logging.info(
-            "Model call start: label=%s provider=openai model=%s system_chars=%s user_chars=%s",
+            "LLM start: %s model=%s chars=%s/%s",
             call_label,
             self.model,
             len(system_prompt),
@@ -73,9 +73,8 @@ class OpenAIProvider(LLMProvider):
         )
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         logging.info(
-            "Model call done: label=%s provider=openai model=%s elapsed_ms=%s response_chars=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+            "LLM done: %s %sms chars=%s tokens=%s/%s/%s",
             call_label,
-            self.model,
             elapsed_ms,
             len(content),
             prompt_tokens,

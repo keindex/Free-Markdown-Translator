@@ -15,7 +15,7 @@ from src.core.pipeline import TranslationPipeline
 from src.core.orchestrator import Orchestrator
 from src.core.types import ApiUsageSummary
 from src.infra.config import TranslatorConfig
-from src.infra.logging import log_task_context
+from src.infra.logging import log_success, log_task_context
 from src.llm.client import OpenAIProvider
 from src.memory.document_context import DocumentContextBuilder
 from src.parser.markdown_parser import MarkdownParser
@@ -181,9 +181,9 @@ def _build_translation_tasks(
 def _run_translation_task(task: TranslationTask, config: TranslatorConfig):
     with log_task_context(task.label):
         pipeline = build_pipeline(copy.deepcopy(config))
-        logging.info("Translation task started: source=%s target=%s", task.source.input_path, task.target_lang)
+        logging.info("Task start: %s -> %s", task.source.input_path, task.target_lang)
         result = pipeline.run(task.source.input_path, task.target_lang, write_output=True, output_path=task.output_path)
-        logging.info("Translation task finished: output=%s", result.output_path)
+        log_success("Task done: %s", result.output_path)
         return task, result
 
 
@@ -203,8 +203,8 @@ def _count_task_bundles(task: TranslationTask, config: TranslatorConfig) -> int:
 
 def _log_task_token_usage(task: TranslationTask, usage: ApiUsageSummary) -> None:
     logging.info(
-        "Token usage: source=%s target=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s api_calls=%s",
-        task.source.input_path,
+        "Tokens %s -> %s: prompt=%s completion=%s total=%s calls=%s",
+        task.source.input_path.name,
         task.target_lang,
         usage.total.prompt_tokens,
         usage.total.completion_tokens,
@@ -216,11 +216,11 @@ def _log_task_token_usage(task: TranslationTask, usage: ApiUsageSummary) -> None
         for call_label in sorted(usage.by_call_label):
             item = usage.by_call_label[call_label]
             parts.append(
-                f"{call_label}(calls={item.call_count}, prompt={item.prompt_tokens}, completion={item.completion_tokens}, total={item.total_tokens})"
+                f"{call_label}(c={item.call_count}, p={item.prompt_tokens}, o={item.completion_tokens}, t={item.total_tokens})"
             )
         logging.info(
-            "Token usage by stage: source=%s target=%s %s",
-            task.source.input_path,
+            "Token stages %s -> %s: %s",
+            task.source.input_path.name,
             task.target_lang,
             "; ".join(parts),
         )
@@ -228,7 +228,7 @@ def _log_task_token_usage(task: TranslationTask, usage: ApiUsageSummary) -> None
 
 def _log_total_token_usage(usage: ApiUsageSummary, task_count: int) -> None:
     logging.info(
-        "Translate job token summary: tasks=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s api_calls=%s",
+        "Job tokens: tasks=%s prompt=%s completion=%s total=%s calls=%s",
         task_count,
         usage.total.prompt_tokens,
         usage.total.completion_tokens,
@@ -240,9 +240,9 @@ def _log_total_token_usage(usage: ApiUsageSummary, task_count: int) -> None:
         for call_label in sorted(usage.by_call_label):
             item = usage.by_call_label[call_label]
             parts.append(
-                f"{call_label}(calls={item.call_count}, prompt={item.prompt_tokens}, completion={item.completion_tokens}, total={item.total_tokens})"
+                f"{call_label}(c={item.call_count}, p={item.prompt_tokens}, o={item.completion_tokens}, t={item.total_tokens})"
             )
-        logging.info("Translate job token summary by stage: %s", "; ".join(parts))
+        logging.info("Job token stages: %s", "; ".join(parts))
 
 
 def _run_translation_task_with_shared_bundle_executor(
@@ -253,7 +253,7 @@ def _run_translation_task_with_shared_bundle_executor(
 ):
     with log_task_context(task.label):
         pipeline = build_pipeline(copy.deepcopy(config))
-        logging.info("Translation task started: source=%s target=%s", task.source.input_path, task.target_lang)
+        logging.info("Task start: %s -> %s", task.source.input_path, task.target_lang)
         result = pipeline.run(
             task.source.input_path,
             task.target_lang,
@@ -262,7 +262,7 @@ def _run_translation_task_with_shared_bundle_executor(
             bundle_executor=bundle_executor,
             bundle_progress_callback=progress_tracker.update if progress_tracker is not None else None,
         )
-        logging.info("Translation task finished: output=%s", result.output_path)
+        log_success("Task done: %s", result.output_path)
         return task, result
 
 
@@ -280,11 +280,12 @@ def translate_command(
     resolved_output_dir = Path(output_dir or config.output.directory)
     sources = _collect_translation_sources(paths, resolved_match_pattern)
     tasks = _build_translation_tasks(sources, target_langs, resolved_output_dir, config)
+    build_pipeline(copy.deepcopy(config))
     task_workers = _resolve_parallel_workers(config, len(tasks))
     bundle_workers = _resolve_bundle_workers(config)
     total_bundles = sum(_count_task_bundles(task, config) for task in tasks)
     logging.info(
-        "Translate job started: files=%s targets=%s tasks=%s bundles=%s task_workers=%s bundle_workers=%s",
+        "Job start: files=%s targets=%s tasks=%s bundles=%s workers=%s/%s",
         len(sources),
         ", ".join(target_langs),
         len(tasks),
@@ -311,7 +312,7 @@ def translate_command(
                 if config.output.write_report and result.output_path is not None:
                     report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
                     report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
-                    logging.info("Wrote translation report: %s", report_path)
+                    log_success("Saved report: %s", report_path)
         finally:
             progress_tracker.close()
         _log_total_token_usage(total_usage, len(tasks))
@@ -344,7 +345,7 @@ def translate_command(
                         except Exception:
                             for pending_future in pending:
                                 pending_future.cancel()
-                            logging.exception(
+                            logging.error(
                                 "Translation task failed: source=%s target=%s",
                                 task.source.input_path,
                                 task.target_lang,
@@ -357,19 +358,19 @@ def translate_command(
                         if config.output.write_report and result.output_path is not None:
                             report_path = result.output_path.with_suffix(result.output_path.suffix + ".report.json")
                             report_path.write_text(json.dumps(result.report, ensure_ascii=False, indent=2), encoding="utf-8")
-                            logging.info(
-                                "[%s/%s] Wrote translation report: %s",
+                            log_success(
+                                "[%s/%s] Saved report: %s",
                                 completed,
                                 len(tasks),
                                 report_path,
                             )
-                        logging.info(
-                            "[%s/%s] Completed translation: %s -> %s",
+                        log_success(
+                            "[%s/%s] Completed: %s -> %s",
                             completed,
                             len(tasks),
-                                task.source.input_path,
-                                result.output_path,
-                            )
+                            task.source.input_path,
+                            result.output_path,
+                        )
     finally:
         progress_tracker.close()
     _log_total_token_usage(total_usage, len(tasks))

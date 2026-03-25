@@ -12,6 +12,7 @@ from src.core.errors import TranslationPipelineError
 from src.core.orchestrator import Orchestrator
 from src.core.types import PipelineResult, TranslationResult
 from src.infra.config import TranslatorConfig
+from src.infra.logging import log_success
 from src.memory.document_context import DocumentContextBuilder
 from src.parser.ast_mapper import AstMapper
 from src.parser.markdown_parser import MarkdownParser
@@ -55,17 +56,15 @@ class TranslationPipeline:
         bundle_executor: Executor | None = None,
         bundle_progress_callback: Callable[[Path, str, str], None] | None = None,
     ) -> PipelineResult:
-        logging.info("Pipeline start: source=%s target=%s", input_path, target_lang)
+        logging.info("Pipeline: %s -> %s", input_path.name, target_lang)
         source_text = input_path.read_text(encoding="utf-8")
         parsed = self.parser.parse(source_text, input_path, target_lang)
-        logging.info("Parsed markdown document.")
         segments = self.extractor.extract(parsed)
         parsed.segments = segments  # type: ignore[attr-defined]
-        logging.info("Extracted %s translatable segments.", len(segments))
 
         context = self.context_builder.build(parsed, segments, self.config)
         bundles = self.orchestrator.build_bundles(segments, context, self.config)
-        logging.info("Built %s translation bundles.", len(bundles))
+        logging.info("Prepared %s segments in %s bundles", len(segments), len(bundles))
 
         segment_lookup = {segment.segment_id: segment for segment in segments}
         mode = self._normalized_mode()
@@ -86,11 +85,7 @@ class TranslationPipeline:
             translations=all_translations,
         )
         if not validation.passed and self._should_run_format_guard(validation):
-            logging.info(
-                "Validation failed; running format guard fallback (mode=%s errors=%s).",
-                mode,
-                len(validation.errors),
-            )
+            logging.warning("Validation failed, running guard (mode=%s errors=%s)", mode, len(validation.errors))
             repaired = []
             translations_by_bundle = self._translations_by_bundle(bundles, all_translations)
             for bundle in bundles:
@@ -111,7 +106,7 @@ class TranslationPipeline:
         if write_output:
             final_output_path.parent.mkdir(parents=True, exist_ok=True)
             final_output_path.write_text(output_text, encoding="utf-8")
-            logging.info("Wrote translated markdown: %s", final_output_path)
+            log_success("Saved markdown: %s", final_output_path)
 
         result = PipelineResult(
             input_path=input_path,
@@ -177,14 +172,11 @@ class TranslationPipeline:
         updated = self.mapper.apply(parsed, translations)
         updated.segments = segments  # type: ignore[attr-defined]
         output_text = self.renderer.render(updated)
-        logging.info("Rendered translated markdown.")
         validation = self.validator.validate(parsed, output_text)
-        logging.info(
-            "Validation finished: passed=%s errors=%s warnings=%s",
-            validation.passed,
-            len(validation.errors),
-            len(validation.warnings),
-        )
+        if validation.passed:
+            logging.info("Validation passed")
+        else:
+            logging.warning("Validation: %s errors, %s warnings", len(validation.errors), len(validation.warnings))
         return output_text, validation, translations
 
     def _translate_bundles(
@@ -205,13 +197,7 @@ class TranslationPipeline:
         if configured_workers == 1 and bundle_executor is None:
             all_translations: list[TranslationResult] = []
             for index, bundle in enumerate(bundles, start=1):
-                logging.info(
-                    "Translating bundle %s/%s: id=%s segments=%s",
-                    index,
-                    len(bundles),
-                    bundle.bundle_id,
-                    len(bundle.segments),
-                )
+                logging.info("Bundle %s/%s: translating %s (%s segments)", index, len(bundles), bundle.bundle_id, len(bundle.segments))
                 translations = self._process_bundle(bundle, context, target_lang, segment_lookup, mode)
                 all_translations.extend(translations)
                 if bundle_progress_callback is not None:
@@ -226,13 +212,7 @@ class TranslationPipeline:
         try:
             future_to_bundle: dict[Future[list[TranslationResult]], tuple[int, object]] = {}
             for index, bundle in enumerate(bundles, start=1):
-                logging.info(
-                    "Queueing bundle %s/%s: id=%s segments=%s",
-                    index,
-                    len(bundles),
-                    bundle.bundle_id,
-                    len(bundle.segments),
-                )
+                logging.info("Bundle %s/%s: queued %s (%s segments)", index, len(bundles), bundle.bundle_id, len(bundle.segments))
                 future = executor.submit(
                     self._process_bundle,
                     bundle,
@@ -272,18 +252,14 @@ class TranslationPipeline:
         segment_lookup,
         mode: str,
     ) -> list[TranslationResult]:
-        logging.info(
-            "Translating bundle: id=%s segments=%s",
-            bundle.bundle_id,
-            len(bundle.segments),
-        )
+        logging.info("Translating %s (%s segments)", bundle.bundle_id, len(bundle.segments))
         translations = self.translator_agent.translate_bundle(
             bundle=bundle,
             context=context,
             target_lang=target_lang,
         )
         if self._should_run_review(bundle, translations):
-            logging.info("Reviewing bundle %s (mode=%s).", bundle.bundle_id, mode)
+            logging.info("Reviewing %s (%s)", bundle.bundle_id, mode)
             translations = self.reviewer_agent.review_bundle(bundle, translations, context)
         for item in translations:
             item.translated_text = self.protected_span_processor.restore(item.translated_text, segment_lookup[item.segment_id])

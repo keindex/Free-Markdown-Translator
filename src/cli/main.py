@@ -11,7 +11,8 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.cli.commands import translate_command
-from src.infra.config import TranslatorConfig, load_config, resolve_config_path
+from src.cli.errors import present_cli_error
+from src.infra.config import TranslatorConfig, initialize_config, load_config, resolve_config_path
 from src.infra.logging import configure_logging
 
 
@@ -80,15 +81,14 @@ def _log_startup_config(args: argparse.Namespace, config: TranslatorConfig) -> N
     input_paths = [str(Path(path).resolve()) for path in args.paths]
     output_dir = str(Path(config.output.directory).resolve())
     logging.info(
-        "Runtime config: config=%s verbose=%s inputs=%s pattern=%s output=%s",
+        "Runtime: config=%s verbose=%s inputs=%s output=%s",
         str(config_path.resolve()) if config_path is not None else "<defaults>",
         args.verbose,
         input_paths,
-        config.input.file_pattern,
         output_dir,
     )
     logging.info(
-        "Translation config: targets=%s tone=%s audience=%s preserve_terms=%s extra_instructions=%s",
+        "Translate: targets=%s tone=%s audience=%s terms=%s instructions=%s",
         config.target_languages,
         config.style.tone,
         config.style.audience,
@@ -96,20 +96,20 @@ def _log_startup_config(args: argparse.Namespace, config: TranslatorConfig) -> N
         len(config.style.instructions),
     )
     logging.info(
-        "Provider config: provider=%s model=%s base_url=%s auth=%s temperature=%s max_tokens=%s",
+        "Provider: %s model=%s auth=%s temp=%s max_tokens=%s",
         config.provider.name,
         config.provider.model,
-        config.provider.base_url,
         _provider_auth_source(config),
         config.provider.temperature,
         config.provider.max_tokens,
     )
     logging.info(
-        "Pipeline config: mode=%s review=%s guard=%s fail_on_validation_error=%s parallel=%s bundle_chars=%s bundle_segments=%s write_report=%s",
+        "Pipeline: mode=%s review=%s guard=%s fail_on_error=%s pattern=%s parallel=%s bundle=%s/%s report=%s",
         config.pipeline.mode,
         config.pipeline.enable_review,
         config.pipeline.enable_format_guard,
         config.pipeline.fail_on_validation_error,
+        config.input.file_pattern,
         config.execution.max_parallel_translations,
         config.segmentation.max_bundle_chars,
         config.segmentation.max_bundle_segments,
@@ -120,8 +120,10 @@ def _log_startup_config(args: argparse.Namespace, config: TranslatorConfig) -> N
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mdtx", description="Agent-based Markdown translation pipeline.")
     parser.add_argument("--config", help="Path to config.yaml", default=None)
+    parser.add_argument("--init-config", action="store_true", help="Create the default config file and exit. Defaults to ~/.mdtx/config.yaml.")
+    parser.add_argument("--force-init-config", action="store_true", help="Overwrite an existing config file when used with --init-config.")
     parser.add_argument("--verbose", action="store_true", help="Enable more detailed logs.")
-    parser.add_argument("paths", nargs="+", help="Markdown files or directories to translate.")
+    parser.add_argument("paths", nargs="*", help="Markdown files or directories to translate.")
     parser.add_argument("--to", "-to", action="append", help="Target language(s), supports comma-separated values. Defaults to config.yaml.")
     parser.add_argument("-o", "--output", help="Output directory. Defaults to config.yaml output.directory.")
     parser.add_argument("-m", "--mode", help="Pipeline mode. Defaults to config.yaml pipeline.mode.")
@@ -138,15 +140,29 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging(logging.DEBUG if args.verbose else logging.INFO)
-    config = _apply_cli_overrides(args, load_config(args.config))
-    _log_startup_config(args, config)
-    return translate_command(
-        args.paths,
-        config.target_languages,
-        config,
-        output_dir=config.output.directory,
-        match_pattern=config.input.file_pattern,
-    )
+    try:
+        if args.init_config:
+            config_path = initialize_config(args.config, force=args.force_init_config)
+            print(f"Config ready: {config_path}")
+            return 0
+        if not args.paths:
+            parser.error("the following arguments are required: paths")
+        config = _apply_cli_overrides(args, load_config(args.config))
+        _log_startup_config(args, config)
+        return translate_command(
+            args.paths,
+            config.target_languages,
+            config,
+            output_dir=config.output.directory,
+            match_pattern=config.input.file_pattern,
+        )
+    except KeyboardInterrupt:
+        print("Translation cancelled by user.", file=sys.stderr)
+        return 130
+    except Exception as exc:
+        presentation = present_cli_error(exc, verbose=args.verbose)
+        print(presentation.message, file=sys.stderr)
+        return presentation.exit_code
 
 
 if __name__ == "__main__":
