@@ -4,11 +4,11 @@
 
 # Free Markdown Translator
 
-Free Markdown Translator 是一个基于 AI Agent 流水线的 Markdown 文档翻译工具，可以将Mardown文档翻译为任意语言，专注于在翻译过程中尽量保留原始 Markdown 结构，同时保持语义连贯性。它适合用于文档站点、本地知识库、README、多语言技术文档等场景。 ✨
+Free Markdown Translator 是一个基于 AI Agent 流水线的 Markdown 文档翻译工具，可以将Mardown文档翻译为任意语言（40+种），在翻译过程中尽量**保留原始 Markdown 文档结构**，同时能够很好地**保持语义连贯性**。✨
 
 ## 🚀 主要功能和特性
 
-- 🧠 使用 AI 驱动翻译流程以及AST语法树校验，可以保持格式的稳定性和更连贯上下文一致性
+- 🧠 使用 AI 驱动翻译流程以及AST语法树校验，可以保持**格式的稳定性**和**语意连贯性**
 - ✂️ 可以自定义语言风格，输入匹配，输出格式，支持不同的翻译模式（快速、平衡、严格）以适应不同需求
 - 🤖 内置 `TranslatorAgent`、`ReviewerAgent`、`FormatGuardAgent`，分别负责翻译、审校和格式修复（按翻译模式启用）
 - 🧱 支持 front matter、标题层级、列表、表格、代码块、链接等结构保护
@@ -82,7 +82,7 @@ python src/cli/main.py README.md --to english,japanese
 只匹配目录中指定文件名格式的 Markdown 文件 （使用正则匹配）：
 
 ```bash
-.\mdtx.exe docs --to Chinese --match "name*.md"
+.\mdtx.exe docs --to Chinese --match "*.md"
 ```
 
 提高并行度，加快大批量翻译：
@@ -203,7 +203,7 @@ $env:OPENAI_API_KEY="your-api-key"
 .\mdtx.exe README.md --to Chinese
 ```
 
-也可以写在配置文件中（不推荐，存在安全风险）：
+也可以写在配置文件中：
 
 ```yaml
 provider:
@@ -222,8 +222,6 @@ provider:
 
 ## 🔄 执行流程与机制
 
-这个项目不是“把整篇 Markdown 一次性丢给模型翻译”，而是一个更稳妥的流水线：
-
 1. `MarkdownParser` 先把源文档解析成 AST，识别 Markdown 结构
 2. `SegmentExtractor` 从 AST 中提取可翻译片段，并保护占位符、控制语法等敏感内容
 3. `DocumentContextBuilder` 生成文档摘要、风格约束、术语上下文
@@ -234,8 +232,6 @@ provider:
 8. `MarkdownValidator` 校验 front matter 和整体结构
 9. 如果校验失败，`FormatGuardAgent` 会在需要时尝试修复格式问题
 10. 最终输出翻译后的 Markdown 和可选报告文件
-
-这套机制的目标是：既尽量保留 Markdown 原貌，又让翻译结果具备足够的上下文一致性和可维护性。 🛡️
 
 ## 🗂️ 项目结构
 
@@ -250,26 +246,6 @@ src/
 ├─ parser/        Markdown 解析、AST 映射、渲染、分段
 ├─ validators/    front matter 与结构校验
 └─ buildtool/     Windows exe 打包脚本与资源
-```
-
-根目录中的其他重要文件：
-
-- `config.yaml`：示例配置
-- `requirements.txt`：运行依赖
-- `doc/`：多语言 README 与设计文档
-
-## 🧪 开发与测试
-
-安装依赖：
-
-```bash
-pip install -r requirements.txt
-```
-
-如果你准备自行打包 exe，还需要：
-
-```bash
-pip install -r src/buildtool/requirements-build.txt
 ```
 
 ## Star History
