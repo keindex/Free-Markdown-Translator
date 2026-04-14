@@ -4,17 +4,17 @@
 
 # Free Markdown Translator
 
-Free Markdown Translator 是一个基于 AI Agent 流水线的 Markdown 文档翻译工具，可以将Mardown文档翻译为任意语言（40+种），在翻译过程中尽量**保留原始 Markdown 文档结构**，同时能够很好地**保持语义连贯性**。✨
+Free Markdown Translator 是一个基于 AI Agent 流水线的 Markdown 文档翻译工具，可以将Mardown文档翻译为任意语言（40+种），在翻译过程中尽量**保留原始 Markdown 文档结构**，同时能够很好地**保持语义连贯性**。
 
 ## 🚀 主要功能和特性
 
-- 🧠 使用 AI 驱动翻译流程以及AST语法树校验，可以保持**格式的稳定性**和**语意连贯性**
-- ✂️ 可以自定义语言风格，输入匹配，输出格式，支持不同的翻译模式（快速、平衡、严格）以适应不同需求
-- 🤖 内置 `TranslatorAgent`、`ReviewerAgent`、`FormatGuardAgent`，分别负责翻译、审校和格式修复（按翻译模式启用）
-- 🧱 支持 front matter、标题层级、列表、表格、代码块、链接等结构保护
-- ✅ 提供结构校验与输出报告，帮助发现格式漂移和内容异常
-- 🔌 兼容 OpenAI 风格接口，可接入 OpenAI 或其他兼容服务
-- ⚙️ 支持多目标语言、目录递归翻译、并行处理、文风约束和术语保留
+- 使用 AI 驱动翻译流程以及AST语法树校验，可以保持**格式的稳定性**和**语意连贯性**
+- 可以自定义语言风格，输入匹配，输出格式，支持不同的翻译模式（快速、平衡、严格）以适应不同需求
+- 内置 `TranslatorAgent`、`ReviewerAgent`、`FormatGuardAgent`，分别负责翻译、审校和格式修复（按翻译模式启用）
+- 支持 front matter、标题层级、列表、表格、代码块、链接等结构保护
+- 提供结构校验与输出报告，帮助发现格式漂移和内容异常
+- 兼容 OpenAI 风格接口，可接入 OpenAI 或其他兼容服务
+- 支持多目标语言、目录递归翻译、并行处理、文风约束和术语保留
 
 ## ⚡ Quick Start
 
