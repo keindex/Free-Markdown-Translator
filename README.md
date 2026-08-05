@@ -24,7 +24,7 @@ Free Markdown Translator 是一个基于 AI Agent 流水线的 Markdown 文档�
 git clone https://github.com/CrazyMayfly/Free-Markdown-Translator.git
 cd Free-Markdown-Translator
 pip install -r requirements.txt
-python src/cli/main.py --init-config
+python src/cli/main.py --init-config 
 ```
 
 初始化后，默认配置文件会生成到：
