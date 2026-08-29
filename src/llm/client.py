@@ -11,6 +11,11 @@ from src.llm.provider import LLMProvider
 
 
 class OpenAIProvider(LLMProvider):
+    # Retry configuration
+    MAX_RETRIES = 3
+    INITIAL_RETRY_DELAY = 2  # seconds
+    RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504, 524}  # 524 is Cloudflare timeout
+
     def __init__(
         self,
         base_url: str,
@@ -43,16 +48,7 @@ class OpenAIProvider(LLMProvider):
             logging.debug("Model input [system] (%s):\n%s", call_label, system_prompt)
             logging.debug("Model input [user] (%s):\n%s", call_label, user_prompt)
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
+        response = self._call_with_retry(system_prompt, user_prompt, call_label)
         content = response.choices[0].message.content or "{}"
         usage = getattr(response, "usage", None)
         prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -78,7 +74,102 @@ class OpenAIProvider(LLMProvider):
         )
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             logging.debug("Model output [raw] (%s):\n%s", call_label, content)
-        return json.loads(content)
+        payload = json.loads(content)
+        # Check for API error responses embedded in JSON
+        if isinstance(payload, dict):
+            if payload.get("status") == "error" or payload.get("error"):
+                error_msg = payload.get("message") or payload.get("error", {}).get("message", str(payload))
+                raise ValueError(f"LLM returned error response: {error_msg}")
+            if "translations" in payload and isinstance(payload["translations"], list):
+                # Validate that translations contain expected fields
+                for item in payload["translations"]:
+                    if not isinstance(item, dict) or "segment_id" not in item:
+                        raise ValueError(f"LLM returned malformed translation item: {item}")
+        return payload
+
+    def _call_with_retry(self, system_prompt: str, user_prompt: str, call_label: str):
+        """Call the LLM API with automatic retry logic for transient errors."""
+        from openai import APIStatusError, APITimeoutError
+
+        last_exception = None
+        for attempt in range(self.MAX_RETRIES + 1):
+            try:
+                return self.client.chat.completions.create(
+                    model=self.model,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+            except APITimeoutError as e:
+                last_exception = e
+                if attempt < self.MAX_RETRIES:
+                    delay = self.INITIAL_RETRY_DELAY * (2 ** attempt)
+                    logging.warning(
+                        "LLM timeout (%s), retrying in %ds (attempt %d/%d)",
+                        call_label,
+                        delay,
+                        attempt + 1,
+                        self.MAX_RETRIES,
+                    )
+                    time.sleep(delay)
+                    continue
+                raise
+            except APIStatusError as e:
+                last_exception = e
+                status_code = getattr(e.response, "status_code", None)
+                
+                # Check if the error is retryable
+                if status_code in self.RETRYABLE_STATUS_CODES and attempt < self.MAX_RETRIES:
+                    # Try to extract retry_after from the error response
+                    retry_after = self._extract_retry_after(e)
+                    delay = retry_after if retry_after else self.INITIAL_RETRY_DELAY * (2 ** attempt)
+                    
+                    logging.warning(
+                        "LLM error %s (%s retryable), retrying in %ds (attempt %d/%d)",
+                        status_code,
+                        call_label,
+                        delay,
+                        attempt + 1,
+                        self.MAX_RETRIES,
+                    )
+                    time.sleep(delay)
+                    continue
+                raise
+
+    @staticmethod
+    def _extract_retry_after(error: Exception) -> int | None:
+        """Extract retry_after value from the error response if available."""
+        try:
+            # Try to get the response body
+            response = getattr(error, "response", None)
+            if response is None:
+                return None
+            
+            # Try to parse JSON from response
+            body = getattr(response, "json", None)
+            if callable(body):
+                data = body()
+            else:
+                data = getattr(response, "text", "")
+                if isinstance(data, str):
+                    import json
+                    data = json.loads(data)
+            
+            # Look for retry_after in the response
+            if isinstance(data, dict):
+                retry_after = data.get("retry_after")
+                if retry_after and isinstance(retry_after, (int, float)):
+                    return int(retry_after)
+        except Exception:
+            # If we can't extract retry_after, we'll use exponential backoff
+            pass
+        
+        return None
+
 
     def get_usage_summary(self) -> ApiUsageSummary:
         with self._usage_lock:

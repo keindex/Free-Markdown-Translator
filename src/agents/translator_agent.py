@@ -15,7 +15,10 @@ class TranslatorAgent:
             raise TranslationPipelineError("No LLM provider configured; cannot perform translation.")
 
         system_prompt, user_prompt = build_translator_prompts(bundle, context, target_lang)
-        payload = self.provider.chat_json(system_prompt, user_prompt, call_label="translate")
+        try:
+            payload = self.provider.chat_json(system_prompt, user_prompt, call_label="translate")
+        except Exception as exc:
+            raise TranslationPipelineError(f"LLM call failed: {exc}") from exc
         results = [
             TranslationResult(
                 segment_id=item["segment_id"],

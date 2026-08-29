@@ -99,6 +99,13 @@ class TranslationPipeline:
                 segments=segments,
                 translations=repaired,
             )
+            if not validation.passed:
+                logging.warning("Format guard could not repair all validation errors, continuing with original translations")
+                output_text, validation, all_translations = self._render_and_validate(
+                    parsed=parsed,
+                    segments=segments,
+                    translations=all_translations,
+                )
 
         if self.config.pipeline.fail_on_validation_error and not validation.passed:
             raise TranslationPipelineError("; ".join(validation.errors))
@@ -199,8 +206,12 @@ class TranslationPipeline:
             all_translations: list[TranslationResult] = []
             for index, bundle in enumerate(bundles, start=1):
                 logging.info("Bundle %s/%s: translating %s (%s segments)", index, len(bundles), bundle.bundle_id, len(bundle.segments))
-                translations = self._process_bundle(bundle, context, target_lang, segment_lookup, mode)
-                all_translations.extend(translations)
+                try:
+                    translations = self._process_bundle(bundle, context, target_lang, segment_lookup, mode)
+                    all_translations.extend(translations)
+                except Exception as exc:
+                    logging.error("Bundle %s failed: %s", bundle.bundle_id, exc)
+                    all_translations.extend([])
                 if bundle_progress_callback is not None:
                     bundle_progress_callback(input_path, target_lang, bundle.bundle_id)
             return all_translations
@@ -228,7 +239,15 @@ class TranslationPipeline:
             try:
                 for future in as_completed(future_to_bundle):
                     index, bundle = future_to_bundle[future]
-                    ordered_results[index] = future.result()
+                    try:
+                        ordered_results[index] = future.result()
+                    except Exception as exc:
+                        logging.error(
+                            "Bundle %s failed: %s",
+                            bundle.bundle_id,
+                            exc,
+                        )
+                        ordered_results[index] = []
                     if bundle_progress_callback is not None:
                         bundle_progress_callback(input_path, target_lang, bundle.bundle_id)
             except Exception:
@@ -271,7 +290,13 @@ class TranslationPipeline:
                 if not self._looks_like_llm_output_format_error(exc):
                     raise
                 if attempt >= max_attempts:
-                    raise
+                    logging.error(
+                        "Bundle %s failed after %d attempts: %s",
+                        bundle.bundle_id,
+                        max_attempts,
+                        exc,
+                    )
+                    return []
                 logging.warning(
                     "LLM output format invalid for bundle=%s attempt=%s/%s; retrying. error=%s",
                     bundle.bundle_id,
@@ -281,7 +306,13 @@ class TranslationPipeline:
                 )
 
         if translations is None and last_exc is not None:
-            raise last_exc
+            logging.error(
+                "Bundle %s failed after %d attempts: %s",
+                bundle.bundle_id,
+                max_attempts,
+                last_exc,
+            )
+            return []
         assert translations is not None
 
         if self._should_run_review(bundle, translations):

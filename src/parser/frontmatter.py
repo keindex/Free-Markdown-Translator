@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,7 +29,11 @@ def split_front_matter(text: str) -> FrontMatterData:
             if text.endswith("\n"):
                 body += "\n"
             raw = "\n".join(raw_lines)
-            data = yaml.safe_load(raw) or {}
+            try:
+                data = yaml.safe_load(raw) or {}
+            except yaml.YAMLError as exc:
+                logger.warning("Skipping invalid YAML frontmatter: %s", exc)
+                return FrontMatterData(raw="", data={}, body=text, line_count=0)
             return FrontMatterData(raw=raw, data=data, body=body, line_count=index + 1)
 
     return FrontMatterData(raw="", data={}, body=text, line_count=0)
